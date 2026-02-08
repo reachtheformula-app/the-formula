@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, BookOpen, MessageSquare, TrendingUp, Plus, ChevronRight, ChevronLeft, Clock, Music, Book, Sun, Edit3, Send, Sparkles, Users, Trash2, X, Printer, Copy, AlertCircle, Globe, Star, Lightbulb, Search, Filter, Camera, Loader, ChevronDown, ChevronUp, Settings, LogOut, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
+import { Calendar, BookOpen, MessageSquare, TrendingUp, Plus, ChevronRight, ChevronLeft, Clock, Music, Book, Sun, Edit3, Send, Sparkles, Users, Trash2, X, Printer, Copy, AlertCircle, Globe, Star, Lightbulb, Search, Filter, Camera, Loader, ChevronDown, ChevronUp, Settings, LogOut, Mail, Lock, User, Eye, EyeOff, Home, Puzzle } from 'lucide-react';
 
 const App = () => {
   // Auth state
@@ -908,7 +908,7 @@ const App = () => {
               </div>
               <div className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
                 <button onClick={() => setExpandedCircleTime(!expandedCircleTime)} className="w-full flex items-center justify-between">
-                  <div className="flex items-center gap-2"><Sun className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Circle Time Script</h3></div>
+                  <div className="flex items-center gap-2"><Star className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Circle Time Script</h3></div>
                   {expandedCircleTime ? <ChevronUp className="w-5 h-5" style={{color: c.bark}} /> : <ChevronDown className="w-5 h-5" style={{color: c.bark}} />}
                 </button>
                 {expandedCircleTime && <div className="mt-3 p-3 rounded-lg whitespace-pre-wrap text-sm" style={{backgroundColor: c.cream, color: c.wood}}>{dayData.circleTime}</div>}
@@ -920,7 +920,7 @@ const App = () => {
               </div>
               {dayData.learningStations && (
                 <div className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
-                  <div className="flex items-center gap-2 mb-2"><Book className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Learning Stations</h3></div>
+                  <div className="flex items-center gap-2 mb-2"><Puzzle className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Learning Stations</h3></div>
                   <ul className="space-y-1">{dayData.learningStations.map((s, i) => <li key={i} className="text-sm" style={{color: c.wood}}><span className="font-bold" style={{color: c.terra}}>{i + 1}.</span> {s}</li>)}</ul>
                 </div>
               )}
@@ -945,7 +945,7 @@ const App = () => {
               {dayData.indoorMovement && (
                 <div className="rounded-xl p-4 shadow-md" style={{backgroundColor: '#fef3c7', border: `1px solid ${c.sand}`}}>
                   <div className="flex items-center gap-2 mb-2">
-                    <Music className="w-5 h-5" style={{color: '#d97706'}} />
+                    <Home className="w-5 h-5" style={{color: '#d97706'}} />
                     <h3 className="font-semibold" style={{color: c.wood}}>Indoor Movement Alternative</h3>
                   </div>
                   <p className="text-sm" style={{color: c.wood}}>{dayData.indoorMovement}</p>
