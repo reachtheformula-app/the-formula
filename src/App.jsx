@@ -453,7 +453,7 @@ const App = () => {
 
   const filteredWeeks = [...weeks, ...customWeeks].filter(w => {
     const matchesSearch = searchTerm === '' || w.theme.toLowerCase().includes(searchTerm.toLowerCase()) || w.focus.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesSeason = filterSeason === 'All' || w.season === filterSeason;
+    const matchesSeason = filterSeason === 'All' || w.season === filterSeason || (w.season && w.season.includes(filterSeason));
     const matchesFocus = filterFocus === 'All' || w.focus === filterFocus;
     const matchesAge = ageFilter === 'all' || (w.ages && w.ages.includes(ageFilter));
     return matchesSearch && matchesSeason && matchesFocus && matchesAge;
@@ -560,7 +560,7 @@ const App = () => {
       '3-4': 'preschoolers (3-4 years) - focus on interactive stories, creative art, pretend play, letter recognition, counting to 10, and cooperative activities',
       '4-5': 'pre-K children (4-5 years) - focus on early literacy, writing practice, science experiments, math concepts, group projects, and kindergarten readiness'
     };
-    const prompt = `Create a curriculum week for ${ageDescriptions[weekAgeGroup]} about "${weekTopic}". ${langInstruction}\n\nNote: Calendar, weather, alphabet, and counting are standard daily routines done every day - do NOT include those. Focus only on theme-specific creative content.\n\nReturn ONLY valid JSON (no markdown, no explanation) in this exact format:\n{\n  "theme": "Creative theme name",\n  "season": "Any|Spring|Summer|Fall|Winter",\n  "focus": "Focus area (e.g., Science, Art, Social-Emotional)",\n  "days": [\n    {\n      "name": "${daysToGen[0] || 'Monday'}",\n      "focusOfDay": "What aspect of the theme we're exploring today",\n      "questionOfDay": "An engaging question to ask the children about today's focus",\n      "circleTime": "3-4 sentence engaging circle time script appropriate for ${weekAgeGroup} year olds introducing today's focus",\n      "songTitle": "Real children's song title related to theme",\n      "songLink": "YouTube URL for the song",\n      "morningActivities": ["Activity 1", "Activity 2", "Activity 3"],\n      "lunch": "Theme-related lunch idea",\n      "afternoonActivities": ["Activity 1", "Activity 2"]${langLabel ? `,\n      "vocabWord": "Word (pronunciation) = English meaning"` : ''}\n    }\n  ]\n}\n\nGenerate exactly ${daysToGen.length} days: ${daysToGen.join(', ')}. Make activities age-appropriate, hands-on, and fun. Use real YouTube songs when possible.`;
+    const prompt = `Create a curriculum week for ${ageDescriptions[weekAgeGroup]} about "${weekTopic}". ${langInstruction}\n\nNote: Calendar, weather, alphabet, and counting are standard daily routines done every day - do NOT include those. Focus only on theme-specific creative content.\n\nReturn ONLY valid JSON (no markdown, no explanation) in this exact format:\n{\n  "theme": "Creative theme name",\n  "season": "Any|Spring|Summer|Fall|Winter|Spring/Summer|Fall/Winter",\n  "focus": "Focus area (e.g., Science, Art, Social-Emotional)",\n  "days": [\n    {\n      "name": "${daysToGen[0] || 'Monday'}",\n      "focusOfDay": "What aspect of the theme we're exploring today",\n      "questionOfDay": "An engaging question to ask the children about today's focus",\n      "circleTime": "3-4 sentence engaging circle time script appropriate for ${weekAgeGroup} year olds introducing today's focus",\n      "songTitle": "Real children's song title related to theme",\n      "songLink": "YouTube URL for the song",\n      "morningActivities": ["Activity 1", "Activity 2", "Activity 3"],\n      "lunch": "Theme-related lunch idea",\n      "afternoonActivities": ["Activity 1", "Activity 2"]${langLabel ? `,\n      "vocabWord": "Word (pronunciation) = English meaning"` : ''}\n    }\n  ]\n}\n\nGenerate exactly ${daysToGen.length} days: ${daysToGen.join(', ')}. Make activities age-appropriate, hands-on, and fun. Use real YouTube songs when possible.`;
     try {
       const response = await fetch("/.netlify/functions/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }) });
       const data = await response.json();
@@ -1255,7 +1255,7 @@ const App = () => {
             <div className="grid grid-cols-2 gap-2">
               <select value={newWeek.season} onChange={e => updWeek('season', e.target.value)} className="px-3 py-2 rounded-lg border" style={{borderColor: c.sand}}>
                 <option value="">Season</option>
-                {['Any', 'Spring', 'Summer', 'Fall', 'Winter'].map(s => <option key={s} value={s}>{s}</option>)}
+                {['Any', 'Spring', 'Summer', 'Fall', 'Winter', 'Spring/Summer', 'Fall/Winter'].map(s => <option key={s} value={s}>{s}</option>)}
               </select>
               <input placeholder="Focus Area" value={newWeek.focus} onChange={e => updWeek('focus', e.target.value)} className="px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
             </div>
