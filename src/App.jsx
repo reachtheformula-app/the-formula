@@ -828,7 +828,7 @@ const App = () => {
           </div>
           
           {/* Teaching Philosophy (for enhanced weeks) */}
-          {(currentWeek.id === 46 || currentWeek.id === 1 || currentWeek.id === 2 || currentWeek.id === 3 || currentWeek.id === 20 || currentWeek.id === 24 || currentWeek.id === 49) && (
+          {(currentWeek.id === 46 || currentWeek.id === 1 || currentWeek.id === 2 || currentWeek.id === 3 || currentWeek.id === 20 || currentWeek.id === 24 || currentWeek.id === 49 || currentWeek.id === 22 || currentWeek.id === 39 || currentWeek.id === 41 || currentWeek.id === 50 || currentWeek.id === 51 || currentWeek.id === 52) && (
             <div className="rounded-xl p-4 mb-4 shadow-md" style={{backgroundColor: '#ecfdf5', border: `1px solid ${c.sand}`}}>
               <button onClick={() => setExpandedPhilosophy(!expandedPhilosophy)} className="w-full flex items-center justify-between">
                 <div className="flex items-center gap-2">
