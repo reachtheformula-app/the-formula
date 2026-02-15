@@ -49,7 +49,7 @@ const App = () => {
   const [weekAgeGroup, setWeekAgeGroup] = useState('2-3');
   const fileInputRef = useRef(null);
   
-  const emptyDay = { focusOfDay: '', questionOfDay: '', circleTime: '', songOfDay: { title: '', link: '' }, morningActivities: [''], lunch: '', afternoonActivities: [''], vocabWord: '' };
+  const emptyDay = { focusOfDay: '', questionOfDay: '', circleTime: '', songOfDay: { title: '', link: '' }, morningActivities: [''], lunch: '', afternoonActivities: [''], vocabWord: '', teacherTips: [], outsideTime: '', indoorMovement: '' };
   const [newWeek, setNewWeek] = useState({ theme: '', season: '', focus: '', daysToInclude: [1,1,1,1,1,0,0], days: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(n => ({ name: n, activities: {...emptyDay} })) });
   
   const c = { cream: '#ecddce', sand: '#d0bfa3', dune: '#c9af97', terra: '#be8a68', bark: '#926f4a', wood: '#774722' };
@@ -310,9 +310,12 @@ const App = () => {
       songTitle: d.activities.songOfDay?.title || '',
       songLink: d.activities.songOfDay?.link || '',
       learningStations: [...(d.activities.morningActivities || []), ...(d.activities.afternoonActivities || [])].filter(a => a),
+      teacherTips: d.activities.teacherTips || [],
+      outsideTime: d.activities.outsideTime || '',
+      indoorMovement: d.activities.indoorMovement || '',
       lunch: d.activities.lunch || ''
     }));
-    const w = { ...newWeek, id: Date.now(), isCustom: true, hasRichData: richDays.length > 0, days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
+    const w = { ...newWeek, id: Date.now(), isCustom: true, hasRichData: richDays.length > 0, teachingPhilosophy: newWeek.teachingPhilosophy || '', days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
     const n = [...customWeeks, w]; setCustomWeeks(n); save('fw', n);
     setNewWeek({ theme: '', season: '', focus: '', daysToInclude: [1,1,1,1,1,0,0], days: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => ({ name: x, activities: {...emptyDay} })) });
     setDayIdx(0); setView('weeklyThemes');
@@ -407,11 +410,11 @@ Return ONLY JSON for this single day:
       const newDays = fullDayNames.map((shortName, idx) => {
         const genDay = allDays.find(d => dayNameMap[d.name] === idx);
         if (genDay) {
-          return { name: shortName, activities: { focusOfDay: genDay.focusOfDay || genDay.focus || '', questionOfDay: genDay.questionOfDay || genDay.qotd || '', circleTime: genDay.circleTime || '', songOfDay: { title: genDay.songTitle || '', link: genDay.songLink || '' }, morningActivities: genDay.morningActivities || genDay.learningStations || [''], lunch: genDay.lunch || '', afternoonActivities: genDay.afternoonActivities || [''], vocabWord: genDay.vocabWord || '' }};
+          return { name: shortName, activities: { focusOfDay: genDay.focusOfDay || genDay.focus || '', questionOfDay: genDay.questionOfDay || genDay.qotd || '', circleTime: genDay.circleTime || '', songOfDay: { title: genDay.songTitle || '', link: genDay.songLink || '' }, morningActivities: genDay.morningActivities || genDay.learningStations || [''], lunch: genDay.lunch || '', afternoonActivities: genDay.afternoonActivities || [''], vocabWord: genDay.vocabWord || '', teacherTips: genDay.teacherTips || [], outsideTime: genDay.outsideTime || '', indoorMovement: genDay.indoorMovement || '' }};
         }
         return { name: shortName, activities: {...emptyDay} };
       });
-      setNewWeek(prev => ({ ...prev, theme: firstParsed.theme || weekTopic, season: firstParsed.season || 'Any', focus: firstParsed.focus || 'General', days: newDays }));
+      setNewWeek(prev => ({ ...prev, theme: firstParsed.theme || weekTopic, season: firstParsed.season || 'Any', focus: firstParsed.focus || 'General', teachingPhilosophy: firstParsed.teachingPhilosophy || '', days: newDays }));
       setWeekTopic('');
     } catch (error) { console.error('AI Week Generation Error:', error); alert('Failed to generate curriculum. Please try again or fill in manually.'); }
     finally { setIsGeneratingWeek(false); }
