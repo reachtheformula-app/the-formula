@@ -370,47 +370,14 @@ const App = () => {
     try {
       const response = await fetch("/api/generate-curriculum", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 16000, messages: [{ role: "user", content: prompt }] }) });
       if (!response.ok) throw new Error('Server error ' + response.status);
-      // Read the SSE stream and extract text
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let fullText = '';
-      let buffer = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // keep incomplete last line in buffer
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') continue;
-            try {
-              const evt = JSON.parse(data);
-              if (evt.type === 'content_block_delta' && evt.delta?.text) {
-                fullText += evt.delta.text;
-              }
-            } catch (e) { /* skip non-JSON lines */ }
-          }
-        }
-      }
-      // Process any remaining buffer
-      if (buffer.startsWith('data: ')) {
-        const data = buffer.slice(6).trim();
-        try {
-          const evt = JSON.parse(data);
-          if (evt.type === 'content_block_delta' && evt.delta?.text) {
-            fullText += evt.delta.text;
-          }
-        } catch (e) {}
-      }
-      console.log('AI Response length:', fullText.length, 'Last 50 chars:', fullText.slice(-50));
+      const data = await response.json();
+      const fullText = data.content?.[0]?.text;
       if (!fullText) throw new Error('No response from AI');
-      const jsonStr = fullText.replace(/```json\n?|\n?```/g, '').trim();
-      // Fix literal newlines inside JSON string values (AI outputs real line breaks in circle time scripts)
+      // Fix literal newlines inside JSON string values
       let cleanJson = '';
       let inStr = false;
       let esc = false;
+      const jsonStr = fullText.replace(/```json\n?|\n?```/g, '').trim();
       for (let i = 0; i < jsonStr.length; i++) {
         const ch = jsonStr[i];
         if (esc) { cleanJson += ch; esc = false; continue; }
