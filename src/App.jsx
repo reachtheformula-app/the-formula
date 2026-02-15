@@ -368,7 +368,7 @@ const App = () => {
     };
     const prompt = `Generate a gold-standard curriculum week for ${ageDescriptions[weekAgeGroup]} about "${weekTopic}". ${langInstruction}\n\nGenerate exactly ${daysToGen.length} days: ${daysToGen.join(', ')}.`;
     try {
-      const response = await fetch("/.netlify/functions/generate-curriculum", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4096, messages: [{ role: "user", content: prompt }] }) });
+      const response = await fetch("/.netlify/functions/generate-curriculum", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 16000, messages: [{ role: "user", content: prompt }] }) });
       if (!response.ok) throw new Error('Server error ' + response.status);
       // Read the SSE stream and extract text
       const reader = response.body.getReader();
@@ -394,7 +394,19 @@ const App = () => {
       }
       if (!fullText) throw new Error('No response from AI');
       const jsonStr = fullText.replace(/```json\n?|\n?```/g, '').trim();
-      const parsed = JSON.parse(jsonStr);
+      // Fix literal newlines inside JSON string values (AI outputs real line breaks in circle time scripts)
+      let cleanJson = '';
+      let inStr = false;
+      let esc = false;
+      for (let i = 0; i < jsonStr.length; i++) {
+        const ch = jsonStr[i];
+        if (esc) { cleanJson += ch; esc = false; continue; }
+        if (ch === '\\' && inStr) { cleanJson += ch; esc = true; continue; }
+        if (ch === '"') { inStr = !inStr; cleanJson += ch; continue; }
+        if (inStr && (ch === '\n' || ch === '\r')) { cleanJson += '\\n'; continue; }
+        cleanJson += ch;
+      }
+      const parsed = JSON.parse(cleanJson);
       if (parsed.error) {
         alert(parsed.message || 'That topic is not appropriate for a children\'s curriculum. Please try a different theme.');
         return;
