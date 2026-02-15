@@ -360,7 +360,7 @@ const App = () => {
     const langInstruction = langLabel ? `Include a ${langLabel} vocabulary word with pronunciation guide for each day.` : '';
     const prompt = `Generate a gold-standard curriculum week for age group ${weekAgeGroup} about "${weekTopic}". ${langInstruction}\n\nGenerate exactly ${daysToGen.length} days: ${daysToGen.join(', ')}.`;
     try {
-      const response = await fetch("/.netlify/functions/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 8000, useSystemPrompt: true, messages: [{ role: "user", content: prompt }] }) });
+      const response = await fetch("/.netlify/functions/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4096, useSystemPrompt: true, messages: [{ role: "user", content: prompt }] }) });
       const data = await response.json();
       const text = data.content?.[0]?.text;
       if (!text) throw new Error('No response from AI');
