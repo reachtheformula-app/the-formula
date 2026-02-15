@@ -1,13 +1,13 @@
-const { neon } = require('@neondatabase/serverless');
+import { neon } from '@neondatabase/serverless';
 
-exports.handler = async (event) => {
+export default async (request, context) => {
   const headers = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*'
   };
 
   try {
-    const sql = neon(process.env.NEON_DATABASE_URL);
+    const sql = neon(Netlify.env.get('NEON_DATABASE_URL'));
 
     const weeks = await sql`SELECT * FROM weeks ORDER BY id`;
     const days = await sql`SELECT * FROM days ORDER BY week_id, sort_order`;
@@ -44,7 +44,6 @@ exports.handler = async (event) => {
         hasRichData: true,
         teachingPhilosophy: w.teaching_philosophy,
         days: weekDays,
-        // Backward compat for simple view fallback
         activities: {
           circleTime: day1.circleTime || '',
           songOfDay: { title: day1.songTitle || '', link: day1.songLink || '' },
@@ -55,9 +54,9 @@ exports.handler = async (event) => {
       };
     });
 
-    return { statusCode: 200, headers, body: JSON.stringify(result) };
+    return new Response(JSON.stringify(result), { status: 200, headers });
   } catch (error) {
     console.error('Curriculum fetch error:', error);
-    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Failed to load curriculum' }) };
+    return new Response(JSON.stringify({ error: 'Failed to load curriculum' }), { status: 500, headers });
   }
 };
