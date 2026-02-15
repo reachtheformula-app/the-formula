@@ -358,28 +358,25 @@ const App = () => {
     const daysToGen = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].filter((_, i) => newWeek.daysToInclude[i]);
     const langLabel = getLanguageLabel();
     const langInstruction = langLabel ? `Include a ${langLabel} vocabulary word with pronunciation guide for each day.` : '';
-    const ageDescriptions = {
-      '0-6m': 'infants (0-6 months) - focus on sensory experiences, tummy time, simple sounds, high-contrast visuals, gentle movement, and caregiver-led interaction',
-      '6m-1': 'infants (6-12 months) - focus on sensory exploration, cause-and-effect play, reaching and grasping, simple songs, peek-a-boo games, and caregiver narration',
-      '1-2': 'toddlers (1-2 years) - focus on sensory play, simple songs with movements, basic vocabulary, safe exploration, and short attention spans (5-10 min activities)',
-      '2-3': 'toddlers (2-3 years) - focus on hands-on activities, simple crafts, movement songs, basic counting (1-5), color recognition, and parallel play',
-      '3-4': 'preschoolers (3-4 years) - focus on interactive stories, creative art, pretend play, letter recognition, counting to 10, and cooperative activities',
-      '4-5': 'pre-K children (4-5 years) - focus on observation, play-based science, creative building, vocabulary in context, and learning through wonder and hands-on exploration'
-    };
-    const prompt = `Create a curriculum week for ${ageDescriptions[weekAgeGroup]} about "${weekTopic}". ${langInstruction}\n\nNote: Calendar, weather, alphabet, and counting are standard daily routines done every day - do NOT include those. Focus only on theme-specific creative content.\n\nReturn ONLY valid JSON (no markdown, no explanation) in this exact format:\n{\n  "theme": "Creative theme name",\n  "season": "Any|Spring|Summer|Fall|Winter|Spring/Summer|Fall/Winter",\n  "focus": "Focus area (e.g., Science, Art, Social-Emotional)",\n  "days": [\n    {\n      "name": "${daysToGen[0] || 'Monday'}",\n      "focusOfDay": "What aspect of the theme we're exploring today",\n      "questionOfDay": "An engaging question to ask the children about today's focus",\n      "circleTime": "3-4 sentence engaging circle time script appropriate for ${weekAgeGroup} year olds introducing today's focus",\n      "songTitle": "Real children's song title related to theme",\n      "songLink": "YouTube URL for the song",\n      "morningActivities": ["Activity 1", "Activity 2", "Activity 3"],\n      "lunch": "Theme-related lunch idea",\n      "afternoonActivities": ["Activity 1", "Activity 2"]${langLabel ? `,\n      "vocabWord": "Word (pronunciation) = English meaning"` : ''}\n    }\n  ]\n}\n\nGenerate exactly ${daysToGen.length} days: ${daysToGen.join(', ')}. Make activities age-appropriate, hands-on, and fun. Use real YouTube songs when possible.`;
+    const prompt = `Generate a gold-standard curriculum week for age group ${weekAgeGroup} about "${weekTopic}". ${langInstruction}\n\nGenerate exactly ${daysToGen.length} days: ${daysToGen.join(', ')}.`;
     try {
-      const response = await fetch("/.netlify/functions/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }) });
+      const response = await fetch("/.netlify/functions/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 8000, useSystemPrompt: true, messages: [{ role: "user", content: prompt }] }) });
       const data = await response.json();
       const text = data.content?.[0]?.text;
       if (!text) throw new Error('No response from AI');
       const jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
       const parsed = JSON.parse(jsonStr);
+      // Check if the AI refused the topic
+      if (parsed.error) {
+        alert(parsed.message || 'That topic is not appropriate for a children\'s curriculum. Please try a different theme.');
+        return;
+      }
       const dayNameMap = { 'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6 };
       const fullDayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
       const newDays = fullDayNames.map((shortName, idx) => {
         const genDay = parsed.days.find(d => dayNameMap[d.name] === idx);
         if (genDay) {
-          return { name: shortName, activities: { focusOfDay: genDay.focusOfDay || '', questionOfDay: genDay.questionOfDay || '', circleTime: genDay.circleTime || '', songOfDay: { title: genDay.songTitle || '', link: genDay.songLink || '' }, morningActivities: genDay.morningActivities || [''], lunch: genDay.lunch || '', afternoonActivities: genDay.afternoonActivities || [''], vocabWord: genDay.vocabWord || '' }};
+          return { name: shortName, activities: { focusOfDay: genDay.focusOfDay || genDay.focus || '', questionOfDay: genDay.questionOfDay || genDay.qotd || '', circleTime: genDay.circleTime || '', songOfDay: { title: genDay.songTitle || '', link: genDay.songLink || '' }, morningActivities: genDay.morningActivities || genDay.learningStations || [''], lunch: genDay.lunch || '', afternoonActivities: genDay.afternoonActivities || [''], vocabWord: genDay.vocabWord || '' }};
         }
         return { name: shortName, activities: {...emptyDay} };
       });
