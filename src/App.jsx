@@ -357,7 +357,7 @@ const App = () => {
     setIsGeneratingWeek(true);
     const daysToGen = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].filter((_, i) => newWeek.daysToInclude[i]);
     const langLabel = getLanguageLabel();
-    const langInstruction = langLabel ? `Include a ${langLabel} vocabulary word with pronunciation guide for each day.` : '';
+    const langInstruction = langLabel ? `Include a ${langLabel} vocabulary word with pronunciation guide.` : '';
     const ageDescriptions = {
       '0-6m': 'infants (0-6 months)',
       '6m-1': 'infants (6-12 months)',
@@ -366,44 +366,71 @@ const App = () => {
       '3-4': 'preschoolers (3-4 years)',
       '4-5': 'pre-K children (4-5 years)'
     };
-    const prompt = `Generate a gold-standard curriculum week for ${ageDescriptions[weekAgeGroup]} about "${weekTopic}". ${langInstruction}\n\nGenerate exactly ${daysToGen.length} days: ${daysToGen.join(', ')}.`;
     try {
-      const response = await fetch("/api/generate-curriculum", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 16000, messages: [{ role: "user", content: prompt }] }) });
-      if (!response.ok) throw new Error('Server error ' + response.status);
-      const data = await response.json();
-      const fullText = data.content?.[0]?.text;
-      if (!fullText) throw new Error('No response from AI');
-      // Fix literal newlines inside JSON string values
-      let cleanJson = '';
-      let inStr = false;
-      let esc = false;
-      const jsonStr = fullText.replace(/```json\n?|\n?```/g, '').trim();
-      for (let i = 0; i < jsonStr.length; i++) {
-        const ch = jsonStr[i];
-        if (esc) { cleanJson += ch; esc = false; continue; }
-        if (ch === '\\' && inStr) { cleanJson += ch; esc = true; continue; }
-        if (ch === '"') { inStr = !inStr; cleanJson += ch; continue; }
-        if (inStr && (ch === '\n' || ch === '\r')) { cleanJson += '\\n'; continue; }
-        cleanJson += ch;
+      // Step 1: Generate theme info + first day
+      const firstPrompt = `Generate a curriculum week about "${weekTopic}" for ${ageDescriptions[weekAgeGroup]}. ${langInstruction}
+
+Return ONLY JSON for the theme overview AND ${daysToGen[0]} only:
+{"theme":"Creative name","season":"Any|Spring|Summer|Fall|Winter","focus":"Focus area","teachingPhilosophy":"150-250 word philosophy for this topic and age group","days":[{"name":"${daysToGen[0]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"Real song","songLink":"Real YouTube URL","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}]}`;
+
+      const firstResp = await fetch("/api/generate-curriculum", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4000, messages: [{ role: "user", content: firstPrompt }] }) });
+      if (!firstResp.ok) throw new Error('Server error ' + firstResp.status);
+      const firstData = await firstResp.json();
+      const firstText = firstData.content?.[0]?.text;
+      if (!firstText) throw new Error('No response from AI');
+      const firstParsed = parseAIJson(firstText);
+      if (firstParsed.error) { alert(firstParsed.message); return; }
+
+      let allDays = [...firstParsed.days];
+
+      // Step 2: Generate remaining days one at a time
+      for (let i = 1; i < daysToGen.length; i++) {
+        const dayPrompt = `Continue the "${firstParsed.theme}" curriculum for ${ageDescriptions[weekAgeGroup]}. The week so far covers: ${allDays.map(d => d.name + ' — ' + d.focus).join(', ')}.
+
+Now generate ${daysToGen[i]} ONLY. Build on previous days.${i === daysToGen.length - 1 ? ' This is the FINAL day — include review and closure.' : ''} ${langInstruction}
+
+Return ONLY JSON for this single day:
+{"name":"${daysToGen[i]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"Real song","songLink":"Real YouTube URL","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}`;
+
+        const dayResp = await fetch("/api/generate-curriculum", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, messages: [{ role: "user", content: dayPrompt }] }) });
+        if (!dayResp.ok) throw new Error('Server error on day ' + daysToGen[i]);
+        const dayData = await dayResp.json();
+        const dayText = dayData.content?.[0]?.text;
+        if (dayText) {
+          const dayParsed = parseAIJson(dayText);
+          if (dayParsed && !dayParsed.error && dayParsed.name) allDays.push(dayParsed);
+        }
       }
-      const parsed = JSON.parse(cleanJson);
-      if (parsed.error) {
-        alert(parsed.message || 'That topic is not appropriate for a children\'s curriculum. Please try a different theme.');
-        return;
-      }
+
       const dayNameMap = { 'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6 };
       const fullDayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
       const newDays = fullDayNames.map((shortName, idx) => {
-        const genDay = parsed.days.find(d => dayNameMap[d.name] === idx);
+        const genDay = allDays.find(d => dayNameMap[d.name] === idx);
         if (genDay) {
           return { name: shortName, activities: { focusOfDay: genDay.focusOfDay || genDay.focus || '', questionOfDay: genDay.questionOfDay || genDay.qotd || '', circleTime: genDay.circleTime || '', songOfDay: { title: genDay.songTitle || '', link: genDay.songLink || '' }, morningActivities: genDay.morningActivities || genDay.learningStations || [''], lunch: genDay.lunch || '', afternoonActivities: genDay.afternoonActivities || [''], vocabWord: genDay.vocabWord || '' }};
         }
         return { name: shortName, activities: {...emptyDay} };
       });
-      setNewWeek(prev => ({ ...prev, theme: parsed.theme || weekTopic, season: parsed.season || 'Any', focus: parsed.focus || 'General', days: newDays }));
+      setNewWeek(prev => ({ ...prev, theme: firstParsed.theme || weekTopic, season: firstParsed.season || 'Any', focus: firstParsed.focus || 'General', days: newDays }));
       setWeekTopic('');
     } catch (error) { console.error('AI Week Generation Error:', error); alert('Failed to generate curriculum. Please try again or fill in manually.'); }
     finally { setIsGeneratingWeek(false); }
+  };
+
+  const parseAIJson = (text) => {
+    const jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
+    let cleanJson = '';
+    let inStr = false;
+    let esc = false;
+    for (let i = 0; i < jsonStr.length; i++) {
+      const ch = jsonStr[i];
+      if (esc) { cleanJson += ch; esc = false; continue; }
+      if (ch === '\\' && inStr) { cleanJson += ch; esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; cleanJson += ch; continue; }
+      if (inStr && (ch === '\n' || ch === '\r')) { cleanJson += '\\n'; continue; }
+      cleanJson += ch;
+    }
+    return JSON.parse(cleanJson);
   };
 
   const updWeek = (f, v) => setNewWeek(p => ({ ...p, [f]: v }));
