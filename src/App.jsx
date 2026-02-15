@@ -358,15 +358,43 @@ const App = () => {
     const daysToGen = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].filter((_, i) => newWeek.daysToInclude[i]);
     const langLabel = getLanguageLabel();
     const langInstruction = langLabel ? `Include a ${langLabel} vocabulary word with pronunciation guide for each day.` : '';
-    const prompt = `Generate a gold-standard curriculum week for age group ${weekAgeGroup} about "${weekTopic}". ${langInstruction}\n\nGenerate exactly ${daysToGen.length} days: ${daysToGen.join(', ')}.`;
+    const ageDescriptions = {
+      '0-6m': 'infants (0-6 months)',
+      '6m-1': 'infants (6-12 months)',
+      '1-2': 'toddlers (1-2 years)',
+      '2-3': 'toddlers (2-3 years)',
+      '3-4': 'preschoolers (3-4 years)',
+      '4-5': 'pre-K children (4-5 years)'
+    };
+    const prompt = `Generate a gold-standard curriculum week for ${ageDescriptions[weekAgeGroup]} about "${weekTopic}". ${langInstruction}\n\nGenerate exactly ${daysToGen.length} days: ${daysToGen.join(', ')}.`;
     try {
-      const response = await fetch("/.netlify/functions/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4096, useSystemPrompt: true, messages: [{ role: "user", content: prompt }] }) });
-      const data = await response.json();
-      const text = data.content?.[0]?.text;
-      if (!text) throw new Error('No response from AI');
-      const jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
+      const response = await fetch("/.netlify/functions/generate-curriculum", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4096, messages: [{ role: "user", content: prompt }] }) });
+      if (!response.ok) throw new Error('Server error ' + response.status);
+      // Read the SSE stream and extract text
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                fullText += parsed.delta.text;
+              }
+            } catch (e) { /* skip non-JSON lines */ }
+          }
+        }
+      }
+      if (!fullText) throw new Error('No response from AI');
+      const jsonStr = fullText.replace(/```json\n?|\n?```/g, '').trim();
       const parsed = JSON.parse(jsonStr);
-      // Check if the AI refused the topic
       if (parsed.error) {
         alert(parsed.message || 'That topic is not appropriate for a children\'s curriculum. Please try a different theme.');
         return;
