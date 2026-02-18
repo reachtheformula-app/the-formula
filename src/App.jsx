@@ -374,7 +374,7 @@ const App = () => {
       const firstPrompt = `Generate a curriculum week about "${weekTopic}" for ${ageDescriptions[weekAgeGroup]}. ${langInstruction}
 
 Return ONLY JSON for the theme overview AND ${daysToGen[0]} only:
-{"theme":"Creative name","season":"Any|Spring|Summer|Fall|Winter","focus":"Focus area","teachingPhilosophy":"150-250 word philosophy for this topic and age group","days":[{"name":"${daysToGen[0]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"Real song","songLink":"Real YouTube URL","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}]}`;
+{"theme":"Creative name","season":"Any|Spring|Summer|Fall|Winter","focus":"Focus area","teachingPhilosophy":"150-250 word philosophy for this topic and age group","days":[{"name":"${daysToGen[0]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"Real song","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}]}`;
 
       const firstResp = await fetch("/api/generate-curriculum", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4000, messages: [{ role: "user", content: firstPrompt }] }) });
       if (!firstResp.ok) throw new Error('Server error ' + firstResp.status);
@@ -388,12 +388,16 @@ Return ONLY JSON for the theme overview AND ${daysToGen[0]} only:
 
       // Step 2: Generate remaining days one at a time
       for (let i = 1; i < daysToGen.length; i++) {
-        const dayPrompt = `Continue the "${firstParsed.theme}" curriculum for ${ageDescriptions[weekAgeGroup]}. The week so far covers: ${allDays.map(d => d.name + ' — ' + d.focus).join(', ')}.
+        const prevDaySummaries = allDays.map(d => `${d.name}: Focus="${d.focus}", Song="${d.songTitle}", Stations=[${(d.learningStations||[]).map(s => s.split(' - ')[0]).join(', ')}], Outside="${d.outsideTime}", Indoor="${d.indoorMovement}"`).join('\n');
+        const dayPrompt = `Continue the "${firstParsed.theme}" curriculum for ${ageDescriptions[weekAgeGroup]}.
 
-Now generate ${daysToGen[i]} ONLY. Build on previous days.${i === daysToGen.length - 1 ? ' This is the FINAL day — include review and closure.' : ''} ${langInstruction}
+PREVIOUS DAYS (do NOT repeat any songs, stations, activities, or outside/indoor ideas from these):
+${prevDaySummaries}
+
+Now generate ${daysToGen[i]} ONLY. Every field must be DIFFERENT from previous days — different song, different learning stations, different outside time, different indoor movement, different circle time focus.${i === daysToGen.length - 1 ? ' This is the FINAL day — include review and closure.' : ''} ${langInstruction}
 
 Return ONLY JSON for this single day:
-{"name":"${daysToGen[i]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"Real song","songLink":"Real YouTube URL","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}`;
+{"name":"${daysToGen[i]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"Real song","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}`;
 
         const dayResp = await fetch("/api/generate-curriculum", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, messages: [{ role: "user", content: dayPrompt }] }) });
         if (!dayResp.ok) throw new Error('Server error on day ' + daysToGen[i]);
@@ -410,7 +414,9 @@ Return ONLY JSON for this single day:
       const newDays = fullDayNames.map((shortName, idx) => {
         const genDay = allDays.find(d => dayNameMap[d.name] === idx);
         if (genDay) {
-          return { name: shortName, activities: { focusOfDay: genDay.focusOfDay || genDay.focus || '', questionOfDay: genDay.questionOfDay || genDay.qotd || '', circleTime: genDay.circleTime || '', songOfDay: { title: genDay.songTitle || '', link: genDay.songLink || '' }, morningActivities: genDay.morningActivities || genDay.learningStations || [''], lunch: genDay.lunch || '', afternoonActivities: genDay.afternoonActivities || [''], vocabWord: genDay.vocabWord || '', teacherTips: genDay.teacherTips || [], outsideTime: genDay.outsideTime || '', indoorMovement: genDay.indoorMovement || '' }};
+          const songTitle = genDay.songTitle || '';
+          const songSearchLink = songTitle ? 'https://www.youtube.com/results?search_query=' + encodeURIComponent(songTitle + ' kids song') : '';
+          return { name: shortName, activities: { focusOfDay: genDay.focusOfDay || genDay.focus || '', questionOfDay: genDay.questionOfDay || genDay.qotd || '', circleTime: genDay.circleTime || '', songOfDay: { title: songTitle, link: songSearchLink }, morningActivities: genDay.morningActivities || genDay.learningStations || [''], lunch: genDay.lunch || '', afternoonActivities: genDay.afternoonActivities || [''], vocabWord: genDay.vocabWord || '', teacherTips: genDay.teacherTips || [], outsideTime: genDay.outsideTime || '', indoorMovement: genDay.indoorMovement || '' }};
         }
         return { name: shortName, activities: {...emptyDay} };
       });
@@ -809,7 +815,7 @@ Return ONLY JSON for this single day:
               <div className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
                 <div className="flex items-center gap-2 mb-2"><Music className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Song of the Day</h3></div>
                 <p className="font-medium" style={{color: c.wood}}>{dayData.songTitle}</p>
-                {dayData.songLink && <a href={dayData.songLink} target="_blank" rel="noopener noreferrer" className="text-sm underline" style={{color: c.terra}}>Watch on YouTube →</a>}
+                {dayData.songLink && <a href={dayData.songLink} target="_blank" rel="noopener noreferrer" className="text-sm underline" style={{color: c.terra}}>{dayData.songLink.includes('search_query') ? 'Find on YouTube →' : 'Watch on YouTube →'}</a>}
               </div>
               {dayData.learningStations && (
                 <div className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
