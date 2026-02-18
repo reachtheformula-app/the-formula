@@ -36,6 +36,8 @@ const App = () => {
   const [expandedCircleTime, setExpandedCircleTime] = useState(false);
   const [expandedDailyRoutine, setExpandedDailyRoutine] = useState(false);
   const [expandedPhilosophy, setExpandedPhilosophy] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [ageFilter, setAgeFilter] = useState('all');
   const [filterSeason, setFilterSeason] = useState('All');
@@ -336,7 +338,7 @@ const App = () => {
   };
   const delMilestone = (id) => { const n = milestones.filter(m => m.id !== id); setMilestones(n); save('fm', n); };
   
-  const selectWeek = (w) => { setSelectedWeek(w); setSelectedDay(0); save('fs', w.id); setView('dailyPlan'); };
+  const selectWeek = (w) => { setSelectedWeek(w); setSelectedDay(0); setIsEditMode(false); save('fs', w.id); setView('dailyPlan'); };
   
   const saveCustomWeek = async () => {
     if (!newWeek.theme || !newWeek.season || !newWeek.focus) return;
@@ -391,6 +393,40 @@ const App = () => {
     } catch (err) {
       console.error('Failed to delete week from database:', err);
     }
+  };
+
+  // Inline editing for custom weeks
+  const editDayField = (dayIndex, field, value) => {
+    const updated = { ...selectedWeek, days: selectedWeek.days.map((d, i) => i === dayIndex ? { ...d, [field]: value } : d) };
+    setSelectedWeek(updated);
+    setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w));
+  };
+  const editDayStation = (dayIndex, stationIndex, value) => {
+    const updated = { ...selectedWeek, days: selectedWeek.days.map((d, i) => i === dayIndex ? { ...d, learningStations: d.learningStations.map((s, si) => si === stationIndex ? value : s) } : d) };
+    setSelectedWeek(updated);
+    setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w));
+  };
+  const editDayTip = (dayIndex, tipIndex, value) => {
+    const updated = { ...selectedWeek, days: selectedWeek.days.map((d, i) => i === dayIndex ? { ...d, teacherTips: d.teacherTips.map((t, ti) => ti === tipIndex ? value : t) } : d) };
+    setSelectedWeek(updated);
+    setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w));
+  };
+  const editWeekField = (field, value) => {
+    const updated = { ...selectedWeek, [field]: value };
+    setSelectedWeek(updated);
+    setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w));
+  };
+  const saveEdits = async () => {
+    setEditSaving(true);
+    try {
+      await fetch('/.netlify/functions/user-weeks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selectedWeek.id, userId: currentUser.id, theme: selectedWeek.theme, season: selectedWeek.season, focus: selectedWeek.focus, teachingPhilosophy: selectedWeek.teachingPhilosophy || '', days: selectedWeek.days })
+      });
+    } catch (err) { console.error('Failed to save edits:', err); }
+    setEditSaving(false);
+    setIsEditMode(false);
   };
 
   const generateAILetter = async () => {
@@ -750,11 +786,24 @@ Return ONLY JSON for this single day:
       {view === 'dailyPlan' && (
         <div className="p-4 pb-24">
           <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => setView('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+            <button onClick={() => { setView('dashboard'); setIsEditMode(false); }} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
             <div className="flex-1">
-              <h2 className="text-xl font-bold" style={{color: c.wood}}>{currentWeek.theme}</h2>
+              {isEditMode ? (
+                <input value={currentWeek.theme} onChange={e => editWeekField('theme', e.target.value)} className="text-xl font-bold w-full px-2 py-1 rounded-lg border" style={{color: c.wood, borderColor: c.terra}} />
+              ) : (
+                <h2 className="text-xl font-bold" style={{color: c.wood}}>{currentWeek.theme}</h2>
+              )}
               <p className="text-sm" style={{color: c.bark}}>{currentWeek.focus} • {currentWeek.season}</p>
             </div>
+            {currentWeek.isCustom && (
+              isEditMode ? (
+                <button onClick={saveEdits} disabled={editSaving} className="px-3 py-2 rounded-full text-sm font-medium" style={{backgroundColor: c.terra, color: 'white'}}>
+                  {editSaving ? <Loader className="w-4 h-4 animate-spin" /> : 'Save'}
+                </button>
+              ) : (
+                <button onClick={() => setIsEditMode(true)} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><Edit3 className="w-5 h-5" style={{color: c.wood}} /></button>
+              )
+            )}
             <button onClick={() => window.print()} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><Printer className="w-5 h-5" style={{color: c.wood}} /></button>
           </div>
           <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
@@ -773,7 +822,11 @@ Return ONLY JSON for this single day:
                 </div>
                 {expandedPhilosophy ? <ChevronUp className="w-5 h-5" style={{color: c.bark}} /> : <ChevronDown className="w-5 h-5" style={{color: c.bark}} />}
               </button>
-              {expandedPhilosophy && <div className="mt-3 p-3 rounded-lg whitespace-pre-wrap text-sm" style={{backgroundColor: 'rgba(255,255,255,0.7)', color: c.wood}}>{currentWeek.teachingPhilosophy}</div>}
+              {expandedPhilosophy && (isEditMode ? (
+                <textarea value={currentWeek.teachingPhilosophy || ''} onChange={e => editWeekField('teachingPhilosophy', e.target.value)} rows={6} className="mt-3 w-full p-3 rounded-lg text-sm border" style={{borderColor: c.terra, color: c.wood}} />
+              ) : (
+                <div className="mt-3 p-3 rounded-lg whitespace-pre-wrap text-sm" style={{backgroundColor: 'rgba(255,255,255,0.7)', color: c.wood}}>{currentWeek.teachingPhilosophy}</div>
+              ))}
             </div>
           )}
           
@@ -863,17 +916,17 @@ Return ONLY JSON for this single day:
               {languageSetting !== 'none' && dayData.frenchWord && (
                 <div className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
                   <div className="flex items-center gap-2 mb-2"><Globe className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>{getLanguageLabel()} Word of the Day</h3></div>
-                  <p className="text-lg font-bold" style={{color: c.terra}}>{dayData.frenchWord}</p>
+                  {isEditMode ? <input value={dayData.frenchWord} onChange={e => editDayField(selectedDay, 'frenchWord', e.target.value)} className="w-full px-2 py-1 rounded-lg border text-lg font-bold" style={{borderColor: c.terra, color: c.terra}} /> : <p className="text-lg font-bold" style={{color: c.terra}}>{dayData.frenchWord}</p>}
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white rounded-xl p-3 shadow-md" style={{border: `1px solid ${c.sand}`}}>
                   <div className="flex items-center gap-1 mb-1"><Lightbulb className="w-4 h-4" style={{color: c.terra}} /><span className="text-xs font-medium" style={{color: c.bark}}>Today's Focus</span></div>
-                  <p className="text-sm font-semibold" style={{color: c.wood}}>{dayData.focus}</p>
+                  {isEditMode ? <input value={dayData.focus} onChange={e => editDayField(selectedDay, 'focus', e.target.value)} className="w-full px-2 py-1 rounded-lg border text-sm" style={{borderColor: c.terra, color: c.wood}} /> : <p className="text-sm font-semibold" style={{color: c.wood}}>{dayData.focus}</p>}
                 </div>
                 <div className="bg-white rounded-xl p-3 shadow-md" style={{border: `1px solid ${c.sand}`}}>
                   <div className="flex items-center gap-1 mb-1"><MessageSquare className="w-4 h-4" style={{color: c.terra}} /><span className="text-xs font-medium" style={{color: c.bark}}>Question of the Day</span></div>
-                  <p className="text-sm font-semibold" style={{color: c.wood}}>{dayData.qotd}</p>
+                  {isEditMode ? <input value={dayData.qotd} onChange={e => editDayField(selectedDay, 'qotd', e.target.value)} className="w-full px-2 py-1 rounded-lg border text-sm" style={{borderColor: c.terra, color: c.wood}} /> : <p className="text-sm font-semibold" style={{color: c.wood}}>{dayData.qotd}</p>}
                 </div>
               </div>
               <div className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
@@ -881,17 +934,34 @@ Return ONLY JSON for this single day:
                   <div className="flex items-center gap-2"><Star className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Circle Time Script</h3></div>
                   {expandedCircleTime ? <ChevronUp className="w-5 h-5" style={{color: c.bark}} /> : <ChevronDown className="w-5 h-5" style={{color: c.bark}} />}
                 </button>
-                {expandedCircleTime && <div className="mt-3 p-3 rounded-lg whitespace-pre-wrap text-sm" style={{backgroundColor: c.cream, color: c.wood}}>{dayData.circleTime}</div>}
+                {expandedCircleTime && (isEditMode ? (
+                  <textarea value={dayData.circleTime} onChange={e => editDayField(selectedDay, 'circleTime', e.target.value)} rows={12} className="mt-3 w-full p-3 rounded-lg border text-sm" style={{borderColor: c.terra, color: c.wood}} />
+                ) : (
+                  <div className="mt-3 p-3 rounded-lg whitespace-pre-wrap text-sm" style={{backgroundColor: c.cream, color: c.wood}}>{dayData.circleTime}</div>
+                ))}
               </div>
               <div className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
                 <div className="flex items-center gap-2 mb-2"><Music className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Song of the Day</h3></div>
-                <p className="font-medium" style={{color: c.wood}}>{dayData.songTitle}</p>
-                {dayData.songLink && <a href={dayData.songLink} target="_blank" rel="noopener noreferrer" className="text-sm underline" style={{color: c.terra}}>{dayData.songLink.includes('search_query') ? 'Find on YouTube →' : 'Watch on YouTube →'}</a>}
+                {isEditMode ? (
+                  <div className="space-y-2">
+                    <input value={dayData.songTitle} onChange={e => editDayField(selectedDay, 'songTitle', e.target.value)} placeholder="Song title" className="w-full px-2 py-1 rounded-lg border text-sm" style={{borderColor: c.terra, color: c.wood}} />
+                    <input value={dayData.songLink || ''} onChange={e => editDayField(selectedDay, 'songLink', e.target.value)} placeholder="YouTube link" className="w-full px-2 py-1 rounded-lg border text-sm" style={{borderColor: c.terra, color: c.wood}} />
+                  </div>
+                ) : (
+                  <>
+                    <p className="font-medium" style={{color: c.wood}}>{dayData.songTitle}</p>
+                    {dayData.songLink && <a href={dayData.songLink} target="_blank" rel="noopener noreferrer" className="text-sm underline" style={{color: c.terra}}>{dayData.songLink.includes('search_query') ? 'Find on YouTube →' : 'Watch on YouTube →'}</a>}
+                  </>
+                )}
               </div>
               {dayData.learningStations && (
                 <div className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
                   <div className="flex items-center gap-2 mb-2"><Puzzle className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Learning Stations</h3></div>
-                  <ul className="space-y-1">{dayData.learningStations.map((s, i) => <li key={i} className="text-sm" style={{color: c.wood}}><span className="font-bold" style={{color: c.terra}}>{i + 1}.</span> {s}</li>)}</ul>
+                  {isEditMode ? (
+                    <div className="space-y-2">{dayData.learningStations.map((s, i) => <textarea key={i} value={s} onChange={e => editDayStation(selectedDay, i, e.target.value)} rows={3} className="w-full px-2 py-1 rounded-lg border text-sm" style={{borderColor: c.terra, color: c.wood}} />)}</div>
+                  ) : (
+                    <ul className="space-y-1">{dayData.learningStations.map((s, i) => <li key={i} className="text-sm" style={{color: c.wood}}><span className="font-bold" style={{color: c.terra}}>{i + 1}.</span> {s}</li>)}</ul>
+                  )}
                 </div>
               )}
               {dayData.teacherTips && dayData.teacherTips.length > 0 && (
@@ -900,31 +970,35 @@ Return ONLY JSON for this single day:
                     <Lightbulb className="w-5 h-5" style={{color: '#8b5cf6'}} />
                     <h3 className="font-semibold" style={{color: c.wood}}>Teacher Tips</h3>
                   </div>
-                  <ul className="space-y-2">{dayData.teacherTips.map((tip, i) => <li key={i} className="text-sm flex items-start gap-2" style={{color: c.wood}}><span style={{color: '#8b5cf6'}}>*</span>{tip}</li>)}</ul>
+                  {isEditMode ? (
+                    <div className="space-y-2">{dayData.teacherTips.map((tip, i) => <input key={i} value={tip} onChange={e => editDayTip(selectedDay, i, e.target.value)} className="w-full px-2 py-1 rounded-lg border text-sm" style={{borderColor: '#8b5cf6', color: c.wood}} />)}</div>
+                  ) : (
+                    <ul className="space-y-2">{dayData.teacherTips.map((tip, i) => <li key={i} className="text-sm flex items-start gap-2" style={{color: c.wood}}><span style={{color: '#8b5cf6'}}>*</span>{tip}</li>)}</ul>
+                  )}
                 </div>
               )}
-              {dayData.outsideTime && (
+              {(dayData.outsideTime || isEditMode) && (
                 <div className="rounded-xl p-4 shadow-md" style={{backgroundColor: '#ecfdf5', border: `1px solid ${c.sand}`}}>
                   <div className="flex items-center gap-2 mb-2">
                     <Sun className="w-5 h-5" style={{color: '#059669'}} />
                     <h3 className="font-semibold" style={{color: c.wood}}>Outside Time</h3>
                   </div>
-                  <p className="text-sm" style={{color: c.wood}}>{dayData.outsideTime}</p>
+                  {isEditMode ? <textarea value={dayData.outsideTime || ''} onChange={e => editDayField(selectedDay, 'outsideTime', e.target.value)} rows={3} className="w-full px-2 py-1 rounded-lg border text-sm" style={{borderColor: '#059669', color: c.wood}} /> : <p className="text-sm" style={{color: c.wood}}>{dayData.outsideTime}</p>}
                 </div>
               )}
-              {dayData.indoorMovement && (
+              {(dayData.indoorMovement || isEditMode) && (
                 <div className="rounded-xl p-4 shadow-md" style={{backgroundColor: '#fef3c7', border: `1px solid ${c.sand}`}}>
                   <div className="flex items-center gap-2 mb-2">
                     <Home className="w-5 h-5" style={{color: '#d97706'}} />
                     <h3 className="font-semibold" style={{color: c.wood}}>Indoor Movement Alternative</h3>
                   </div>
-                  <p className="text-sm" style={{color: c.wood}}>{dayData.indoorMovement}</p>
+                  {isEditMode ? <textarea value={dayData.indoorMovement || ''} onChange={e => editDayField(selectedDay, 'indoorMovement', e.target.value)} rows={3} className="w-full px-2 py-1 rounded-lg border text-sm" style={{borderColor: '#d97706', color: c.wood}} /> : <p className="text-sm" style={{color: c.wood}}>{dayData.indoorMovement}</p>}
                 </div>
               )}
               {dayData.lunch && (
                 <div className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
                   <div className="flex items-center gap-2 mb-2"><Sun className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Lunch Idea</h3></div>
-                  <p className="text-sm" style={{color: c.wood}}>{dayData.lunch}</p>
+                  {isEditMode ? <input value={dayData.lunch} onChange={e => editDayField(selectedDay, 'lunch', e.target.value)} className="w-full px-2 py-1 rounded-lg border text-sm" style={{borderColor: c.terra, color: c.wood}} /> : <p className="text-sm" style={{color: c.wood}}>{dayData.lunch}</p>}
                 </div>
               )}
             </div>
