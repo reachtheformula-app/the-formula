@@ -1,16 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, BookOpen, MessageSquare, TrendingUp, Plus, ChevronRight, ChevronLeft, Clock, Music, Book, Sun, Edit3, Send, Sparkles, Users, Trash2, X, Printer, Copy, AlertCircle, Globe, Star, Lightbulb, Search, Filter, Camera, Loader, ChevronDown, ChevronUp, Settings, LogOut, Mail, Lock, User, Eye, EyeOff, Home, Puzzle } from 'lucide-react';
+import { Calendar, BookOpen, MessageSquare, TrendingUp, Plus, ChevronRight, ChevronLeft, Clock, Music, Book, Sun, Edit3, Send, Sparkles, Users, Trash2, X, Printer, Copy, AlertCircle, Globe, Star, Lightbulb, Search, Filter, Camera, Loader, ChevronDown, ChevronUp, Settings, LogOut, User, Home, Puzzle } from 'lucide-react';
 
 const App = () => {
-  // Auth state
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
-  const [currentUser, setCurrentUser] = useState({ id: '1', name: 'Preview User', email: 'preview@theformula.com' });
-  const [authView, setAuthView] = useState('login'); // login, signup, forgot
-  const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
-  const [signupForm, setSignupForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
+  // Auth state — Netlify Identity
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
 
   // App state
   const [view, setView] = useState('dashboard');
@@ -57,19 +52,52 @@ const App = () => {
   const c = { cream: '#ecddce', sand: '#d0bfa3', dune: '#c9af97', terra: '#be8a68', bark: '#926f4a', wood: '#774722' };
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
-  // Check for existing session on mount
+  // Netlify Identity setup
   useEffect(() => {
-    const session = localStorage.getItem('formula_session');
-    if (session) {
-      try {
-        const user = JSON.parse(session);
-        setCurrentUser(user);
+    const netlifyIdentity = window.netlifyIdentity;
+    if (!netlifyIdentity) return;
+
+    // Map Netlify user to our user format
+    const mapUser = (netlifyUser) => {
+      if (!netlifyUser) return null;
+      return {
+        id: netlifyUser.id,
+        name: netlifyUser.user_metadata?.full_name || netlifyUser.email?.split('@')[0] || 'User',
+        email: netlifyUser.email
+      };
+    };
+
+    // Check if already logged in
+    netlifyIdentity.on('init', (user) => {
+      if (user) {
+        const mapped = mapUser(user);
+        setCurrentUser(mapped);
         setIsAuthenticated(true);
-        load(user);
-      } catch (e) {
-        localStorage.removeItem('formula_session');
+        load(mapped);
       }
-    }
+      setAuthReady(true);
+    });
+
+    netlifyIdentity.on('login', (user) => {
+      const mapped = mapUser(user);
+      setCurrentUser(mapped);
+      setIsAuthenticated(true);
+      load(mapped);
+      netlifyIdentity.close();
+    });
+
+    netlifyIdentity.on('logout', () => {
+      setCurrentUser(null);
+      setIsAuthenticated(false);
+      setCustomWeeks([]);
+      setChildren([]);
+      setLogs([]);
+      setMilestones([]);
+      setSelectedWeek(null);
+      setView('dashboard');
+    });
+
+    netlifyIdentity.init();
   }, []);
 
   useEffect(() => {
@@ -87,94 +115,14 @@ const App = () => {
       .catch(err => { console.error('Failed to load curriculum:', err); setLoadingWeeks(false); });
   }, []);
 
-  // Auth functions
-  const hashPassword = async (password) => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password);
-    const hash = await crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-  };
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setAuthLoading(true);
-    setAuthError('');
-    
-    try {
-      const users = JSON.parse(localStorage.getItem('formula_users') || '[]');
-      const hashedPassword = await hashPassword(loginForm.password);
-      const user = users.find(u => u.email.toLowerCase() === loginForm.email.toLowerCase() && u.password === hashedPassword);
-      
-      if (user) {
-        const session = { id: user.id, name: user.name, email: user.email };
-        localStorage.setItem('formula_session', JSON.stringify(session));
-        setCurrentUser(session);
-        setIsAuthenticated(true);
-        load(session);
-        setLoginForm({ email: '', password: '' });
-      } else {
-        setAuthError('Invalid email or password');
-      }
-    } catch (error) {
-      setAuthError('Login failed. Please try again.');
-    }
-    setAuthLoading(false);
-  };
-
-  const handleSignup = async (e) => {
-    e.preventDefault();
-    setAuthLoading(true);
-    setAuthError('');
-    
-    if (signupForm.password !== signupForm.confirmPassword) {
-      setAuthError('Passwords do not match');
-      setAuthLoading(false);
-      return;
-    }
-    
-    if (signupForm.password.length < 6) {
-      setAuthError('Password must be at least 6 characters');
-      setAuthLoading(false);
-      return;
-    }
-    
-    try {
-      const users = JSON.parse(localStorage.getItem('formula_users') || '[]');
-      
-      if (users.find(u => u.email.toLowerCase() === signupForm.email.toLowerCase())) {
-        setAuthError('An account with this email already exists');
-        setAuthLoading(false);
-        return;
-      }
-      
-      const hashedPassword = await hashPassword(signupForm.password);
-      const newUser = {
-        id: Date.now().toString(),
-        name: signupForm.name,
-        email: signupForm.email,
-        password: hashedPassword,
-        createdAt: new Date().toISOString()
-      };
-      
-      users.push(newUser);
-      localStorage.setItem('formula_users', JSON.stringify(users));
-      
-      const session = { id: newUser.id, name: newUser.name, email: newUser.email };
-      localStorage.setItem('formula_session', JSON.stringify(session));
-      setCurrentUser(session);
-      setIsAuthenticated(true);
-      setSignupForm({ name: '', email: '', password: '', confirmPassword: '' });
-    } catch (error) {
-      setAuthError('Signup failed. Please try again.');
-    }
-    setAuthLoading(false);
-  };
-
   const handleLogout = () => {
-    localStorage.removeItem('formula_session');
-    setCurrentUser(null);
-    setIsAuthenticated(false);
-    setView('dashboard');
+    const netlifyIdentity = window.netlifyIdentity;
+    if (netlifyIdentity) netlifyIdentity.logout();
+  };
+
+  const openLogin = () => {
+    const netlifyIdentity = window.netlifyIdentity;
+    if (netlifyIdentity) netlifyIdentity.open();
   };
 
   // Storage functions - use localStorage with user prefix
@@ -567,6 +515,20 @@ Return ONLY JSON for this single day:
   const dayData = currentWeek.hasRichData && currentWeek.days ? currentWeek.days[selectedDay] : null;
 
   // LOGIN SCREEN
+  // Show loading while Netlify Identity initializes
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
+        <div className="text-center">
+          <div className="w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center" style={{backgroundColor: c.terra}}>
+            <span className="text-4xl font-bold text-white">F</span>
+          </div>
+          <Loader className="w-6 h-6 animate-spin mx-auto" style={{color: c.terra}} />
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
@@ -580,83 +542,11 @@ Return ONLY JSON for this single day:
           </div>
           
           <div className="bg-white rounded-2xl p-6 shadow-lg" style={{border: `2px solid ${c.sand}`}}>
-            {authView === 'login' && (
-              <form onSubmit={handleLogin}>
-                <h2 className="text-xl font-bold mb-4 text-center" style={{color: c.wood}}>Welcome Back</h2>
-                {authError && <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-600">{authError}</div>}
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium block mb-1" style={{color: c.wood}}>Email</label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5" style={{color: c.bark}} />
-                      <input type="email" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} className="w-full pl-10 pr-3 py-3 rounded-lg border" style={{borderColor: c.sand}} placeholder="you@example.com" required />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium block mb-1" style={{color: c.wood}}>Password</label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5" style={{color: c.bark}} />
-                      <input type={showPassword ? 'text' : 'password'} value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} className="w-full pl-10 pr-10 py-3 rounded-lg border" style={{borderColor: c.sand}} placeholder="••••••••" required />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                        {showPassword ? <EyeOff className="w-5 h-5" style={{color: c.bark}} /> : <Eye className="w-5 h-5" style={{color: c.bark}} />}
-                      </button>
-                    </div>
-                  </div>
-                  <button type="submit" disabled={authLoading} className="w-full py-3 rounded-lg font-semibold text-white disabled:opacity-50" style={{backgroundColor: c.terra}}>
-                    {authLoading ? 'Signing in...' : 'Sign In'}
-                  </button>
-                </div>
-                <p className="text-center mt-4 text-sm" style={{color: c.bark}}>
-                  Don't have an account? <button type="button" onClick={() => { setAuthView('signup'); setAuthError(''); }} className="font-semibold underline" style={{color: c.terra}}>Sign up</button>
-                </p>
-              </form>
-            )}
-            
-            {authView === 'signup' && (
-              <form onSubmit={handleSignup}>
-                <h2 className="text-xl font-bold mb-4 text-center" style={{color: c.wood}}>Create Account</h2>
-                {authError && <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-600">{authError}</div>}
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium block mb-1" style={{color: c.wood}}>Full Name</label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5" style={{color: c.bark}} />
-                      <input type="text" value={signupForm.name} onChange={e => setSignupForm({...signupForm, name: e.target.value})} className="w-full pl-10 pr-3 py-3 rounded-lg border" style={{borderColor: c.sand}} placeholder="Jane Smith" required />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium block mb-1" style={{color: c.wood}}>Email</label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5" style={{color: c.bark}} />
-                      <input type="email" value={signupForm.email} onChange={e => setSignupForm({...signupForm, email: e.target.value})} className="w-full pl-10 pr-3 py-3 rounded-lg border" style={{borderColor: c.sand}} placeholder="you@example.com" required />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium block mb-1" style={{color: c.wood}}>Password</label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5" style={{color: c.bark}} />
-                      <input type={showPassword ? 'text' : 'password'} value={signupForm.password} onChange={e => setSignupForm({...signupForm, password: e.target.value})} className="w-full pl-10 pr-10 py-3 rounded-lg border" style={{borderColor: c.sand}} placeholder="At least 6 characters" required />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                        {showPassword ? <EyeOff className="w-5 h-5" style={{color: c.bark}} /> : <Eye className="w-5 h-5" style={{color: c.bark}} />}
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium block mb-1" style={{color: c.wood}}>Confirm Password</label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5" style={{color: c.bark}} />
-                      <input type={showPassword ? 'text' : 'password'} value={signupForm.confirmPassword} onChange={e => setSignupForm({...signupForm, confirmPassword: e.target.value})} className="w-full pl-10 pr-3 py-3 rounded-lg border" style={{borderColor: c.sand}} placeholder="Confirm password" required />
-                    </div>
-                  </div>
-                  <button type="submit" disabled={authLoading} className="w-full py-3 rounded-lg font-semibold text-white disabled:opacity-50" style={{backgroundColor: c.terra}}>
-                    {authLoading ? 'Creating account...' : 'Create Account'}
-                  </button>
-                </div>
-                <p className="text-center mt-4 text-sm" style={{color: c.bark}}>
-                  Already have an account? <button type="button" onClick={() => { setAuthView('login'); setAuthError(''); }} className="font-semibold underline" style={{color: c.terra}}>Sign in</button>
-                </p>
-              </form>
-            )}
+            <h2 className="text-xl font-bold mb-2 text-center" style={{color: c.wood}}>Welcome</h2>
+            <p className="text-sm text-center mb-6" style={{color: c.bark}}>Sign in or create an account to access your curriculum.</p>
+            <button onClick={openLogin} className="w-full py-3 rounded-lg font-semibold text-white" style={{backgroundColor: c.terra}}>
+              Sign In / Sign Up
+            </button>
           </div>
         </div>
       </div>
