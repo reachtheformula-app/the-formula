@@ -4,7 +4,7 @@ export default async (request, context) => {
   const headers = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
 
@@ -59,6 +59,26 @@ export default async (request, context) => {
         RETURNING *
       `;
       return new Response(JSON.stringify(row[0]), { status: 201, headers });
+    }
+
+    // PUT — Update an existing custom week
+    if (request.method === 'PUT') {
+      const body = await request.json();
+      const { id, userId, theme, season, focus, teachingPhilosophy, days } = body;
+
+      if (!id || !userId) {
+        return new Response(JSON.stringify({ error: 'id and userId required' }), { status: 400, headers });
+      }
+
+      const row = await sql`
+        UPDATE user_weeks 
+        SET theme = ${theme}, season = ${season || 'Any'}, focus = ${focus || 'General'}, 
+            teaching_philosophy = ${teachingPhilosophy || null}, days = ${JSON.stringify(days)},
+            updated_at = NOW()
+        WHERE id = ${id} AND user_id = ${userId}
+        RETURNING *
+      `;
+      return new Response(JSON.stringify(row[0] || { success: true }), { status: 200, headers });
     }
 
     // DELETE — Remove a custom week
