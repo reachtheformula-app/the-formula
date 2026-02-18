@@ -63,6 +63,7 @@ const App = () => {
         const user = JSON.parse(session);
         setCurrentUser(user);
         setIsAuthenticated(true);
+        load(user);
       } catch (e) {
         localStorage.removeItem('formula_session');
       }
@@ -74,8 +75,7 @@ const App = () => {
     link.href = 'https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap';
     link.rel = 'stylesheet';
     document.head.appendChild(link);
-    if (isAuthenticated) load();
-  }, [isAuthenticated]);
+  }, []);
 
   // Fetch curriculum from database
   useEffect(() => {
@@ -108,6 +108,7 @@ const App = () => {
         localStorage.setItem('formula_session', JSON.stringify(session));
         setCurrentUser(session);
         setIsAuthenticated(true);
+        load(session);
         setLoginForm({ email: '', password: '' });
       } else {
         setAuthError('Invalid email or password');
@@ -175,7 +176,10 @@ const App = () => {
   };
 
   // Storage functions - use localStorage with user prefix
-  const getStorageKey = (key) => currentUser ? `formula_${currentUser.id}_${key}` : key;
+  const getStorageKey = (key, user) => {
+    const u = user || currentUser;
+    return u ? `formula_${u.id}_${key}` : key;
+  };
   
   const save = (k, v) => { 
     try { 
@@ -185,11 +189,13 @@ const App = () => {
     }
   };
   
-  const load = () => {
+  const load = (user) => {
+    const u = user || currentUser;
+    if (!u) return;
     try {
       const keys = ['fw', 'fc', 'fl', 'fm', 'fs', 'fls'];
       const data = keys.map(k => {
-        const item = localStorage.getItem(getStorageKey(k));
+        const item = localStorage.getItem(getStorageKey(k, u));
         return item ? JSON.parse(item) : null;
       });
       if (data[0]) setCustomWeeks(data[0]);
