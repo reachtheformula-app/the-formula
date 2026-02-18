@@ -62,13 +62,14 @@ const App = () => {
       if (!netlifyUser) return null;
       return {
         id: netlifyUser.id,
-        name: netlifyUser.user_metadata?.full_name || netlifyUser.email?.split('@')[0] || 'User',
+        name: netlifyUser.user_metadata?.full_name || netlifyUser.user_metadata?.name || netlifyUser.user_metadata?.preferred_username || netlifyUser.email?.split('@')[0] || 'User',
         email: netlifyUser.email
       };
     };
 
     // Check if already logged in
     netlifyIdentity.on('init', (user) => {
+      console.log('Netlify Identity user:', user);
       if (user) {
         const mapped = mapUser(user);
         setCurrentUser(mapped);
@@ -79,6 +80,7 @@ const App = () => {
     });
 
     netlifyIdentity.on('login', (user) => {
+      console.log('Netlify Identity login:', user);
       const mapped = mapUser(user);
       setCurrentUser(mapped);
       setIsAuthenticated(true);
@@ -562,7 +564,7 @@ Return ONLY JSON for this single day:
         <div className="p-4 space-y-5 pb-24">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm" style={{color: c.bark}}>Welcome back,</p>
+              <p className="text-sm" style={{color: c.bark}}>Welcome,</p>
               <h1 className="text-xl font-bold" style={{color: c.wood}}>{currentUser?.name}</h1>
             </div>
             <button onClick={handleLogout} className="p-2 rounded-full" style={{backgroundColor: c.sand}}>
