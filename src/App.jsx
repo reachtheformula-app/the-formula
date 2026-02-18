@@ -264,6 +264,15 @@ const App = () => {
     ]
   };
 
+  const universalDailyRoutine = {
+    calendarTime: "Start each day by reviewing the date together. Use a simple wall calendar or draw one on paper. Point to today's date, say the day of the week, the month, and the number. \"Today is Monday, February 18th!\" For younger children, simply point and name. For older preschoolers, ask them to find today's number or count the days so far this month.",
+    countingPractice: "Count something real every day — fingers, toes, snack crackers, blocks, steps to the door. Start with counting to 5 for younger toddlers and build up to 10, then 20 for older preschoolers. Use your fingers, touch each object as you count, and make it physical. \"Let's count our jumps! 1... 2... 3...\" The goal is daily exposure, not mastery.",
+    daysOfWeek: "Sing or chant the days of the week together. Clap along, stomp along, or make up hand motions. Over time, children will memorize the sequence through repetition and rhythm. Ask: \"What day is it today? What day was yesterday? What day comes tomorrow?\"",
+    daysOfWeekSong: "https://www.youtube.com/watch?v=36n93jvjkDs",
+    weatherCheck: "Look out the window together and describe what you see. \"Is it sunny or cloudy? Can you see rain? Is it windy — are the trees moving?\" For older children, introduce a simple weather chart where they can mark today's weather with a sticker or drawing. Connect weather to choices: \"It's cold today — what should we wear?\"",
+    abcPractice: "Sing the ABC song together, point to letters on a poster or in a book, or play a simple letter recognition game. For younger toddlers, focus on just a few familiar letters (like the first letter of their name). For older preschoolers, practice letter sounds: \"B says buh! What else starts with buh? Ball! Banana! Bear!\""
+  };
+
 
   // Helper functions
   const getChildName = (id) => children.find(x => x.id === parseInt(id))?.name || 'All';
@@ -772,7 +781,7 @@ Return ONLY JSON for this single day:
           {(() => {
             // Determine which daily routine to show based on week's target age
             // Gold standard weeks use routineGroup field; detect infant weeks by age tags
-            const weekAges = currentWeek.ages || [];
+            const weekAges = Array.isArray(currentWeek.ages) ? currentWeek.ages : (currentWeek.ages ? [currentWeek.ages] : []);
             const isInfantOnly = weekAges.length > 0 && weekAges.every(a => a === "0-6m" || a === "6m-1");
             const routineGroup = currentWeek.routineGroup || (isInfantOnly && weekAges.includes("0-6m") ? "0-6" : isInfantOnly ? "6-12" : null);
             const infantRoutine = routineGroup === "0-6" ? infantRoutine0to6 : (routineGroup === "6-12" ? infantRoutine6to12 : null);
