@@ -192,23 +192,48 @@ const App = () => {
   const load = (user) => {
     const u = user || currentUser;
     if (!u) return;
+    // Load custom weeks from database
+    fetch(`/.netlify/functions/user-weeks?userId=${u.id}`)
+      .then(res => res.json())
+      .then(rows => {
+        if (Array.isArray(rows) && rows.length > 0) {
+          const dbWeeks = rows.map(r => ({
+            id: r.id,
+            theme: r.theme,
+            season: r.season,
+            focus: r.focus,
+            ages: r.age_group,
+            isCustom: true,
+            hasRichData: true,
+            teachingPhilosophy: r.teaching_philosophy || '',
+            days: typeof r.days === 'string' ? JSON.parse(r.days) : r.days,
+            activities: (() => {
+              const days = typeof r.days === 'string' ? JSON.parse(r.days) : r.days;
+              const d1 = days[0] || {};
+              return { circleTime: d1.circleTime || '', songOfDay: { title: d1.songTitle || '', link: d1.songLink || '' }, morningActivity: (d1.learningStations || [])[0] || '', lunch: d1.lunch || '', afternoonActivity: (d1.learningStations || [])[1] || '' };
+            })()
+          }));
+          setCustomWeeks(dbWeeks);
+        }
+      })
+      .catch(err => console.error('Failed to load custom weeks:', err));
+    // Load other settings from localStorage
     try {
-      const keys = ['fw', 'fc', 'fl', 'fm', 'fs', 'fls'];
-      const data = keys.map(k => {
+      const settingsKeys = ['fc', 'fl', 'fm', 'fs', 'fls'];
+      const data = settingsKeys.map(k => {
         const item = localStorage.getItem(getStorageKey(k, u));
         return item ? JSON.parse(item) : null;
       });
-      if (data[0]) setCustomWeeks(data[0]);
-      if (data[1]) setChildren(data[1]);
-      if (data[2]) setLogs(data[2]);
-      if (data[3]) setMilestones(data[3]);
-      if (data[4]) { 
-        const w = [...weeks, ...(data[0] || [])].find(x => x.id === data[4]); 
+      if (data[0]) setChildren(data[0]);
+      if (data[1]) setLogs(data[1]);
+      if (data[2]) setMilestones(data[2]);
+      if (data[3]) { 
+        const w = [...weeks].find(x => x.id === data[3]); 
         if (w) setSelectedWeek(w); 
       }
-      if (data[5]) { 
-        setLanguageSetting(data[5].language || 'none'); 
-        setCustomLanguageName(data[5].customName || ''); 
+      if (data[4]) { 
+        setLanguageSetting(data[4].language || 'none'); 
+        setCustomLanguageName(data[4].customName || ''); 
       }
     } catch (e) { 
       console.error('Load error:', e); 
@@ -304,7 +329,7 @@ const App = () => {
   
   const selectWeek = (w) => { setSelectedWeek(w); setSelectedDay(0); save('fs', w.id); setView('dailyPlan'); };
   
-  const saveCustomWeek = () => {
+  const saveCustomWeek = async () => {
     if (!newWeek.theme || !newWeek.season || !newWeek.focus) return;
     const dayNameFull = { 'Mon': 'Monday', 'Tue': 'Tuesday', 'Wed': 'Wednesday', 'Thu': 'Thursday', 'Fri': 'Friday', 'Sat': 'Saturday', 'Sun': 'Sunday' };
     const richDays = newWeek.days.filter((_, i) => newWeek.daysToInclude[i]).map(d => ({
@@ -321,12 +346,43 @@ const App = () => {
       indoorMovement: d.activities.indoorMovement || '',
       lunch: d.activities.lunch || ''
     }));
-    const w = { ...newWeek, id: Date.now(), isCustom: true, hasRichData: richDays.length > 0, teachingPhilosophy: newWeek.teachingPhilosophy || '', days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
-    const n = [...customWeeks, w]; setCustomWeeks(n); save('fw', n);
+    // Save to database
+    try {
+      const resp = await fetch('/.netlify/functions/user-weeks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          userEmail: currentUser.email,
+          userName: currentUser.name,
+          theme: newWeek.theme,
+          season: newWeek.season,
+          focus: newWeek.focus,
+          ageGroup: weekAgeGroup,
+          teachingPhilosophy: newWeek.teachingPhilosophy || '',
+          days: richDays
+        })
+      });
+      const saved = await resp.json();
+      const w = { id: saved.id, theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ages: weekAgeGroup, isCustom: true, hasRichData: richDays.length > 0, teachingPhilosophy: newWeek.teachingPhilosophy || '', days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
+      setCustomWeeks(prev => [...prev, w]);
+    } catch (err) {
+      console.error('Failed to save week to database:', err);
+      // Fallback to localStorage
+      const w = { id: Date.now(), theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ages: weekAgeGroup, isCustom: true, hasRichData: richDays.length > 0, teachingPhilosophy: newWeek.teachingPhilosophy || '', days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
+      const n = [...customWeeks, w]; setCustomWeeks(n); save('fw', n);
+    }
     setNewWeek({ theme: '', season: '', focus: '', daysToInclude: [1,1,1,1,1,0,0], days: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => ({ name: x, activities: {...emptyDay} })) });
     setDayIdx(0); setView('weeklyThemes');
   };
-  const delCustomWeek = (id) => { const n = customWeeks.filter(w => w.id !== id); setCustomWeeks(n); save('fw', n); };
+  const delCustomWeek = async (id) => {
+    setCustomWeeks(prev => prev.filter(w => w.id !== id));
+    try {
+      await fetch(`/.netlify/functions/user-weeks?id=${id}&userId=${currentUser.id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('Failed to delete week from database:', err);
+    }
+  };
 
   const generateAILetter = async () => {
     setIsGeneratingLetter(true); setAiError(null);
