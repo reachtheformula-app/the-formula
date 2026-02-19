@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, BookOpen, MessageSquare, TrendingUp, Plus, ChevronRight, ChevronLeft, Clock, Music, Book, Sun, Edit3, Send, Sparkles, Users, Trash2, X, Printer, Copy, AlertCircle, Globe, Star, Lightbulb, Search, Filter, Camera, Loader, ChevronDown, ChevronUp, Settings, LogOut, User, Home, Puzzle } from 'lucide-react';
+import { Calendar, BookOpen, MessageSquare, TrendingUp, Plus, ChevronRight, ChevronLeft, Clock, Music, Book, Sun, Edit3, Send, Sparkles, Users, Trash2, X, Printer, Copy, AlertCircle, Globe, Star, Lightbulb, Search, Filter, Camera, Loader, ChevronDown, ChevronUp, Settings, LogOut, User, Home, Puzzle, CreditCard, Crown, Shield, Check, Lock } from 'lucide-react';
 
 const App = () => {
   // Auth state — Netlify Identity
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
+
+  // Subscription state
+  const [subscription, setSubscription] = useState({ tier: 'none', status: 'inactive', isAgency: false, loading: true });
+  const [checkoutMessage, setCheckoutMessage] = useState(null);
 
   // App state
   const [view, setView] = useState('dashboard');
@@ -44,6 +48,7 @@ const App = () => {
   const [isGeneratingWeek, setIsGeneratingWeek] = useState(false);
   const [weekTopic, setWeekTopic] = useState('');
   const [weekAgeGroup, setWeekAgeGroup] = useState('2-3');
+  const [billingCycle, setBillingCycle] = useState('monthly');
   const fileInputRef = useRef(null);
   
   const emptyDay = { focusOfDay: '', questionOfDay: '', circleTime: '', songOfDay: { title: '', link: '' }, morningActivities: [''], lunch: '', afternoonActivities: [''], vocabWord: '', teacherTips: [], outsideTime: '', indoorMovement: '' };
@@ -52,12 +57,80 @@ const App = () => {
   const c = { cream: '#ecddce', sand: '#d0bfa3', dune: '#c9af97', terra: '#be8a68', bark: '#926f4a', wood: '#774722' };
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
+  // Subscription helpers
+  const hasTier = (minTier) => {
+    const tiers = { none: 0, gold: 1, agency_gold: 1, platinum: 2, agency_platinum: 2 };
+    return (tiers[subscription.tier] || 0) >= (tiers[minTier] || 0);
+  };
+  const isActive = () => subscription.status === 'active' || subscription.status === 'trialing';
+  const hasGold = () => isActive() && hasTier('gold');
+  const hasPlatinum = () => isActive() && hasTier('platinum');
+
+  const checkSubscription = async (userId) => {
+    try {
+      const resp = await fetch(`/.netlify/functions/check-subscription?userId=${userId}`);
+      const data = await resp.json();
+      setSubscription({ tier: data.tier || 'none', status: data.status || 'inactive', isAgency: data.isAgency || false, loading: false });
+    } catch (err) {
+      console.error('Failed to check subscription:', err);
+      setSubscription(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  const startCheckout = async (plan) => {
+    try {
+      const resp = await fetch('/.netlify/functions/create-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan, userId: currentUser.id, userEmail: currentUser.email }),
+      });
+      const data = await resp.json();
+      if (data.url) window.location.href = data.url;
+      else alert('Failed to create checkout session: ' + (data.error || 'Unknown error'));
+    } catch (err) {
+      alert('Failed to start checkout: ' + err.message);
+    }
+  };
+
+  const openCustomerPortal = async () => {
+    try {
+      const resp = await fetch('/.netlify/functions/manage-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id }),
+      });
+      const data = await resp.json();
+      if (data.url) window.location.href = data.url;
+      else alert('Could not open billing portal: ' + (data.error || 'Unknown error'));
+    } catch (err) {
+      alert('Failed to open billing portal: ' + err.message);
+    }
+  };
+
+  // Handle checkout success/cancel URL params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get('checkout');
+    const tier = params.get('tier');
+    if (checkout === 'success') {
+      setCheckoutMessage({ type: 'success', text: `Welcome to The Formula ${tier === 'platinum' ? 'Platinum' : 'Gold'}! Your subscription is now active.` });
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+      // Re-check subscription after a brief delay (webhook may still be processing)
+      if (currentUser) {
+        setTimeout(() => checkSubscription(currentUser.id), 2000);
+      }
+    } else if (checkout === 'canceled') {
+      setCheckoutMessage({ type: 'info', text: 'Checkout was canceled. You can try again anytime.' });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [currentUser]);
+
   // Netlify Identity setup
   useEffect(() => {
     const netlifyIdentity = window.netlifyIdentity;
     if (!netlifyIdentity) return;
 
-    // Map Netlify user to our user format
     const mapUser = (netlifyUser) => {
       if (!netlifyUser) return null;
       return {
@@ -67,23 +140,24 @@ const App = () => {
       };
     };
 
-    // Check if already logged in
     netlifyIdentity.on('init', (user) => {
-      console.log('Netlify Identity user:', user);
       if (user) {
         const mapped = mapUser(user);
         setCurrentUser(mapped);
         setIsAuthenticated(true);
+        checkSubscription(mapped.id);
         load(mapped);
+      } else {
+        setSubscription(prev => ({ ...prev, loading: false }));
       }
       setAuthReady(true);
     });
 
     netlifyIdentity.on('login', (user) => {
-      console.log('Netlify Identity login:', user);
       const mapped = mapUser(user);
       setCurrentUser(mapped);
       setIsAuthenticated(true);
+      checkSubscription(mapped.id);
       load(mapped);
       netlifyIdentity.close();
     });
@@ -91,12 +165,14 @@ const App = () => {
     netlifyIdentity.on('logout', () => {
       setCurrentUser(null);
       setIsAuthenticated(false);
+      setSubscription({ tier: 'none', status: 'inactive', isAgency: false, loading: false });
       setCustomWeeks([]);
       setChildren([]);
       setLogs([]);
       setMilestones([]);
       setSelectedWeek(null);
       setView('dashboard');
+      setCheckoutMessage(null);
     });
 
     netlifyIdentity.init();
@@ -127,37 +203,26 @@ const App = () => {
     if (netlifyIdentity) netlifyIdentity.open();
   };
 
-  // Storage functions - use localStorage with user prefix
+  // Storage functions
   const getStorageKey = (key, user) => {
     const u = user || currentUser;
     return u ? `formula_${u.id}_${key}` : key;
   };
   
   const save = (k, v) => { 
-    try { 
-      localStorage.setItem(getStorageKey(k), JSON.stringify(v)); 
-    } catch (e) { 
-      console.error('Save error:', e); 
-    }
+    try { localStorage.setItem(getStorageKey(k), JSON.stringify(v)); } catch (e) { console.error('Save error:', e); }
   };
   
   const load = (user) => {
     const u = user || currentUser;
     if (!u) return;
-    // Load custom weeks from database
     fetch(`/.netlify/functions/user-weeks?userId=${u.id}`)
       .then(res => res.json())
       .then(rows => {
         if (Array.isArray(rows) && rows.length > 0) {
           const dbWeeks = rows.map(r => ({
-            id: r.id,
-            theme: r.theme,
-            season: r.season,
-            focus: r.focus,
-            ages: r.age_group,
-            isCustom: true,
-            hasRichData: true,
-            teachingPhilosophy: r.teaching_philosophy || '',
+            id: r.id, theme: r.theme, season: r.season, focus: r.focus, ages: r.age_group,
+            isCustom: true, hasRichData: true, teachingPhilosophy: r.teaching_philosophy || '',
             days: typeof r.days === 'string' ? JSON.parse(r.days) : r.days,
             activities: (() => {
               const days = typeof r.days === 'string' ? JSON.parse(r.days) : r.days;
@@ -169,31 +234,18 @@ const App = () => {
         }
       })
       .catch(err => console.error('Failed to load custom weeks:', err));
-    // Load other settings from localStorage
     try {
       const settingsKeys = ['fc', 'fl', 'fm', 'fs', 'fls'];
-      const data = settingsKeys.map(k => {
-        const item = localStorage.getItem(getStorageKey(k, u));
-        return item ? JSON.parse(item) : null;
-      });
+      const data = settingsKeys.map(k => { const item = localStorage.getItem(getStorageKey(k, u)); return item ? JSON.parse(item) : null; });
       if (data[0]) setChildren(data[0]);
       if (data[1]) setLogs(data[1]);
       if (data[2]) setMilestones(data[2]);
-      if (data[3]) { 
-        const w = [...weeks].find(x => x.id === data[3]); 
-        if (w) setSelectedWeek(w); 
-      }
-      if (data[4]) { 
-        setLanguageSetting(data[4].language || 'none'); 
-        setCustomLanguageName(data[4].customName || ''); 
-      }
-    } catch (e) { 
-      console.error('Load error:', e); 
-    }
+      if (data[3]) { const w = [...weeks].find(x => x.id === data[3]); if (w) setSelectedWeek(w); }
+      if (data[4]) { setLanguageSetting(data[4].language || 'none'); setCustomLanguageName(data[4].customName || ''); }
+    } catch (e) { console.error('Load error:', e); }
   };
 
-  // Rich daily data for weeks
-  // ========== BUSY ROADS TEACHING PHILOSOPHY ==========
+  // ========== INFANT ROUTINES ==========
   const infantRoutine0to6 = {
     label: "Daily Rhythm",
     items: [
@@ -225,26 +277,13 @@ const App = () => {
     abcPractice: "Sing the ABC song together, point to letters on a poster or in a book, or play a simple letter recognition game. For younger toddlers, focus on just a few familiar letters (like the first letter of their name). For older preschoolers, practice letter sounds: \"B says buh! What else starts with buh? Ball! Banana! Bear!\""
   };
 
-
   // Helper functions
   const getChildName = (id) => children.find(x => x.id === parseInt(id))?.name || 'All';
   const getTodayLogs = () => logs.filter(l => new Date(l.timestamp).toDateString() === new Date().toDateString());
   const fmtTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const fmtDate = (ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-  const getLanguageLabel = () => {
-    if (languageSetting === 'none') return null;
-    if (languageSetting === 'french') return 'French';
-    if (languageSetting === 'spanish') return 'Spanish';
-    if (languageSetting === 'custom') return customLanguageName || 'Language';
-    return 'Language';
-  };
-  const saveLanguageSettings = (lang, customName = '') => {
-    setLanguageSetting(lang);
-    setCustomLanguageName(customName);
-    save('fls', { language: lang, customName });
-  };
-
+  const getLanguageLabel = () => { if (languageSetting === 'none') return null; if (languageSetting === 'french') return 'French'; if (languageSetting === 'spanish') return 'Spanish'; if (languageSetting === 'custom') return customLanguageName || 'Language'; return 'Language'; };
+  const saveLanguageSettings = (lang, customName = '') => { setLanguageSetting(lang); setCustomLanguageName(customName); save('fls', { language: lang, customName }); };
   const allSeasons = ['All', ...new Set(weeks.map(w => w.season))];
   const allFocusAreas = ['All', ...new Set(weeks.map(w => w.focus))];
 
@@ -256,128 +295,41 @@ const App = () => {
     return matchesSearch && matchesSeason && matchesFocus && matchesAge;
   });
 
-  const saveChild = () => {
-    if (!childForm.name) return;
-    const n = editingChild ? children.map(x => x.id === editingChild.id ? { ...childForm, id: editingChild.id } : x) : [...children, { ...childForm, id: Date.now() }];
-    setChildren(n); save('fc', n); setChildForm({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '' }); setEditingChild(null); setShowChildForm(false);
-  };
+  const saveChild = () => { if (!childForm.name) return; const n = editingChild ? children.map(x => x.id === editingChild.id ? { ...childForm, id: editingChild.id } : x) : [...children, { ...childForm, id: Date.now() }]; setChildren(n); save('fc', n); setChildForm({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '' }); setEditingChild(null); setShowChildForm(false); };
   const delChild = (id) => { const n = children.filter(x => x.id !== id); setChildren(n); save('fc', n); };
-
-  const handlePhotoUpload = (e) => {
-    const files = Array.from(e.target.files);
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => setLogForm(prev => ({ ...prev, photos: [...(prev.photos || []), { id: Date.now() + Math.random(), data: reader.result, name: file.name }] }));
-      reader.readAsDataURL(file);
-    });
-  };
-
+  const handlePhotoUpload = (e) => { const files = Array.from(e.target.files); files.forEach(file => { const reader = new FileReader(); reader.onloadend = () => setLogForm(prev => ({ ...prev, photos: [...(prev.photos || []), { id: Date.now() + Math.random(), data: reader.result, name: file.name }] })); reader.readAsDataURL(file); }); };
   const removePhoto = (photoId) => setLogForm(prev => ({ ...prev, photos: prev.photos.filter(p => p.id !== photoId) }));
-
-  const saveLog = () => {
-    if (!logForm.activity) return;
-    const n = editingLog ? logs.map(l => l.id === editingLog.id ? { ...logForm, id: editingLog.id, timestamp: editingLog.timestamp } : l) : [{ ...logForm, id: Date.now(), timestamp: new Date().toISOString() }, ...logs];
-    setLogs(n); save('fl', n); setLogForm({ activity: '', notes: '', childId: '', photos: [] }); setEditingLog(null); setShowLogForm(false);
-  };
+  const saveLog = () => { if (!logForm.activity) return; const n = editingLog ? logs.map(l => l.id === editingLog.id ? { ...logForm, id: editingLog.id, timestamp: editingLog.timestamp } : l) : [{ ...logForm, id: Date.now(), timestamp: new Date().toISOString() }, ...logs]; setLogs(n); save('fl', n); setLogForm({ activity: '', notes: '', childId: '', photos: [] }); setEditingLog(null); setShowLogForm(false); };
   const delLog = (id) => { const n = logs.filter(l => l.id !== id); setLogs(n); save('fl', n); };
-  
-  const saveMilestone = () => {
-    if (!milestoneForm.title) return;
-    const n = [{ ...milestoneForm, id: Date.now(), date: new Date().toISOString() }, ...milestones];
-    setMilestones(n); save('fm', n); setMilestoneForm({ title: '', childId: '', notes: '' }); setShowMilestoneForm(false);
-  };
+  const saveMilestone = () => { if (!milestoneForm.title) return; const n = [{ ...milestoneForm, id: Date.now(), date: new Date().toISOString() }, ...milestones]; setMilestones(n); save('fm', n); setMilestoneForm({ title: '', childId: '', notes: '' }); setShowMilestoneForm(false); };
   const delMilestone = (id) => { const n = milestones.filter(m => m.id !== id); setMilestones(n); save('fm', n); };
-  
   const selectWeek = (w) => { setSelectedWeek(w); setSelectedDay(0); setIsEditMode(false); save('fs', w.id); setView('dailyPlan'); };
   
   const saveCustomWeek = async () => {
     if (!newWeek.theme || !newWeek.season || !newWeek.focus) return;
     const dayNameFull = { 'Mon': 'Monday', 'Tue': 'Tuesday', 'Wed': 'Wednesday', 'Thu': 'Thursday', 'Fri': 'Friday', 'Sat': 'Saturday', 'Sun': 'Sunday' };
-    const richDays = newWeek.days.filter((_, i) => newWeek.daysToInclude[i]).map(d => ({
-      name: dayNameFull[d.name] || d.name,
-      frenchWord: d.activities.vocabWord || '',
-      focus: d.activities.focusOfDay || '',
-      qotd: d.activities.questionOfDay || '',
-      circleTime: d.activities.circleTime || '',
-      songTitle: d.activities.songOfDay?.title || '',
-      songLink: d.activities.songOfDay?.link || '',
-      learningStations: [...(d.activities.morningActivities || []), ...(d.activities.afternoonActivities || [])].filter(a => a),
-      teacherTips: d.activities.teacherTips || [],
-      outsideTime: d.activities.outsideTime || '',
-      indoorMovement: d.activities.indoorMovement || '',
-      lunch: d.activities.lunch || ''
-    }));
-    // Save to database
+    const richDays = newWeek.days.filter((_, i) => newWeek.daysToInclude[i]).map(d => ({ name: dayNameFull[d.name] || d.name, frenchWord: d.activities.vocabWord || '', focus: d.activities.focusOfDay || '', qotd: d.activities.questionOfDay || '', circleTime: d.activities.circleTime || '', songTitle: d.activities.songOfDay?.title || '', songLink: d.activities.songOfDay?.link || '', learningStations: [...(d.activities.morningActivities || []), ...(d.activities.afternoonActivities || [])].filter(a => a), teacherTips: d.activities.teacherTips || [], outsideTime: d.activities.outsideTime || '', indoorMovement: d.activities.indoorMovement || '', lunch: d.activities.lunch || '' }));
     try {
-      const resp = await fetch('/.netlify/functions/user-weeks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentUser.id,
-          userEmail: currentUser.email,
-          userName: currentUser.name,
-          theme: newWeek.theme,
-          season: newWeek.season,
-          focus: newWeek.focus,
-          ageGroup: weekAgeGroup,
-          teachingPhilosophy: newWeek.teachingPhilosophy || '',
-          days: richDays
-        })
-      });
+      const resp = await fetch('/.netlify/functions/user-weeks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: currentUser.id, userEmail: currentUser.email, userName: currentUser.name, theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ageGroup: weekAgeGroup, teachingPhilosophy: newWeek.teachingPhilosophy || '', days: richDays }) });
       const saved = await resp.json();
       const w = { id: saved.id, theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ages: weekAgeGroup, isCustom: true, hasRichData: richDays.length > 0, teachingPhilosophy: newWeek.teachingPhilosophy || '', days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
       setCustomWeeks(prev => [...prev, w]);
     } catch (err) {
       console.error('Failed to save week to database:', err);
-      // Fallback to localStorage
-      const w = { id: Date.now(), theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ages: weekAgeGroup, isCustom: true, hasRichData: richDays.length > 0, teachingPhilosophy: newWeek.teachingPhilosophy || '', days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
+      const w = { id: Date.now(), theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ages: weekAgeGroup, isCustom: true, hasRichData: true, teachingPhilosophy: newWeek.teachingPhilosophy || '', days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
       const n = [...customWeeks, w]; setCustomWeeks(n); save('fw', n);
     }
     setNewWeek({ theme: '', season: '', focus: '', daysToInclude: [1,1,1,1,1,0,0], days: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => ({ name: x, activities: {...emptyDay} })) });
     setDayIdx(0); setView('weeklyThemes');
   };
-  const delCustomWeek = async (id) => {
-    setCustomWeeks(prev => prev.filter(w => w.id !== id));
-    try {
-      await fetch(`/.netlify/functions/user-weeks?id=${id}&userId=${currentUser.id}`, { method: 'DELETE' });
-    } catch (err) {
-      console.error('Failed to delete week from database:', err);
-    }
-  };
+  const delCustomWeek = async (id) => { setCustomWeeks(prev => prev.filter(w => w.id !== id)); try { await fetch(`/.netlify/functions/user-weeks?id=${id}&userId=${currentUser.id}`, { method: 'DELETE' }); } catch (err) { console.error('Failed to delete week from database:', err); } };
 
-  // Inline editing for custom weeks
-  const editDayField = (dayIndex, field, value) => {
-    const updated = { ...selectedWeek, days: selectedWeek.days.map((d, i) => i === dayIndex ? { ...d, [field]: value } : d) };
-    setSelectedWeek(updated);
-    setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w));
-  };
-  const editDayStation = (dayIndex, stationIndex, value) => {
-    const updated = { ...selectedWeek, days: selectedWeek.days.map((d, i) => i === dayIndex ? { ...d, learningStations: d.learningStations.map((s, si) => si === stationIndex ? value : s) } : d) };
-    setSelectedWeek(updated);
-    setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w));
-  };
-  const editDayTip = (dayIndex, tipIndex, value) => {
-    const updated = { ...selectedWeek, days: selectedWeek.days.map((d, i) => i === dayIndex ? { ...d, teacherTips: d.teacherTips.map((t, ti) => ti === tipIndex ? value : t) } : d) };
-    setSelectedWeek(updated);
-    setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w));
-  };
-  const editWeekField = (field, value) => {
-    const updated = { ...selectedWeek, [field]: value };
-    setSelectedWeek(updated);
-    setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w));
-  };
-  const saveEdits = async () => {
-    setEditSaving(true);
-    try {
-      await fetch('/.netlify/functions/user-weeks', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: selectedWeek.id, userId: currentUser.id, theme: selectedWeek.theme, season: selectedWeek.season, focus: selectedWeek.focus, teachingPhilosophy: selectedWeek.teachingPhilosophy || '', days: selectedWeek.days })
-      });
-    } catch (err) { console.error('Failed to save edits:', err); }
-    setEditSaving(false);
-    setIsEditMode(false);
-  };
+  // Inline editing
+  const editDayField = (dayIndex, field, value) => { const updated = { ...selectedWeek, days: selectedWeek.days.map((d, i) => i === dayIndex ? { ...d, [field]: value } : d) }; setSelectedWeek(updated); setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w)); };
+  const editDayStation = (dayIndex, stationIndex, value) => { const updated = { ...selectedWeek, days: selectedWeek.days.map((d, i) => i === dayIndex ? { ...d, learningStations: d.learningStations.map((s, si) => si === stationIndex ? value : s) } : d) }; setSelectedWeek(updated); setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w)); };
+  const editDayTip = (dayIndex, tipIndex, value) => { const updated = { ...selectedWeek, days: selectedWeek.days.map((d, i) => i === dayIndex ? { ...d, teacherTips: d.teacherTips.map((t, ti) => ti === tipIndex ? value : t) } : d) }; setSelectedWeek(updated); setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w)); };
+  const editWeekField = (field, value) => { const updated = { ...selectedWeek, [field]: value }; setSelectedWeek(updated); setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w)); };
+  const saveEdits = async () => { setEditSaving(true); try { await fetch('/.netlify/functions/user-weeks', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selectedWeek.id, userId: currentUser.id, theme: selectedWeek.theme, season: selectedWeek.season, focus: selectedWeek.focus, teachingPhilosophy: selectedWeek.teachingPhilosophy || '', days: selectedWeek.days }) }); } catch (err) { console.error('Failed to save edits:', err); } setEditSaving(false); setIsEditMode(false); };
 
   const generateAILetter = async () => {
     setIsGeneratingLetter(true); setAiError(null);
@@ -400,15 +352,11 @@ const App = () => {
   };
 
   const genTemplateLetter = () => {
-    const w = selectedWeek || weeks[0];
-    const tl = getTodayLogs();
-    const cn = children[0]?.name || 'your little one';
+    const w = selectedWeek || weeks[0]; const tl = getTodayLogs(); const cn = children[0]?.name || 'your little one';
     const dayDataForLetter = w.hasRichData && w.days ? w.days[selectedDay] : null;
     const tones = { warm: { g: 'Dear Parents,', cl: 'Warm regards,', a: 'wonderful' }, professional: { g: 'Hello,', cl: 'Best regards,', a: 'productive' }, fun: { g: 'Hey there! 🌟', cl: 'See you tomorrow! 🎉', a: 'amazing' }};
-    const t = tones[letterTone];
-    let ls = tl.length > 0 ? `\n**Today's Activities:**\n${tl.map(l => `• ${fmtTime(l.timestamp)} - ${l.activity}${l.notes ? `: ${l.notes}` : ''}`).join('\n')}\n` : '';
-    const langLabel = getLanguageLabel();
-    const languageNote = langLabel && dayDataForLetter?.frenchWord ? `\n**${langLabel} Word:** ${dayDataForLetter.frenchWord}\n` : '';
+    const t = tones[letterTone]; let ls = tl.length > 0 ? `\n**Today's Activities:**\n${tl.map(l => `• ${fmtTime(l.timestamp)} - ${l.activity}${l.notes ? `: ${l.notes}` : ''}`).join('\n')}\n` : '';
+    const langLabel = getLanguageLabel(); const languageNote = langLabel && dayDataForLetter?.frenchWord ? `\n**${langLabel} Word:** ${dayDataForLetter.frenchWord}\n` : '';
     setLetter(`${t.g}\n\nWhat a ${t.a} day exploring "${w.theme}" with ${cn}!${languageNote}${ls}\n\nLooking forward to tomorrow!\n\n${t.cl}\n[Your Name]`);
   };
 
@@ -418,21 +366,9 @@ const App = () => {
     const daysToGen = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].filter((_, i) => newWeek.daysToInclude[i]);
     const langLabel = getLanguageLabel();
     const langInstruction = langLabel ? `Include a ${langLabel} vocabulary word with pronunciation guide.` : '';
-    const ageDescriptions = {
-      '0-6m': 'infants (0-6 months)',
-      '6m-1': 'infants (6-12 months)',
-      '1-2': 'toddlers (1-2 years)',
-      '2-3': 'toddlers (2-3 years)',
-      '3-4': 'preschoolers (3-4 years)',
-      '4-5': 'pre-K children (4-5 years)'
-    };
+    const ageDescriptions = { '0-6m': 'infants (0-6 months)', '6m-1': 'infants (6-12 months)', '1-2': 'toddlers (1-2 years)', '2-3': 'toddlers (2-3 years)', '3-4': 'preschoolers (3-4 years)', '4-5': 'pre-K children (4-5 years)' };
     try {
-      // Step 1: Generate theme info + first day
-      const firstPrompt = `Generate a curriculum week about "${weekTopic}" for ${ageDescriptions[weekAgeGroup]}. ${langInstruction}
-
-Return ONLY JSON for the theme overview AND ${daysToGen[0]} only:
-{"theme":"Creative name","season":"Any|Spring|Summer|Fall|Winter","focus":"Focus area","teachingPhilosophy":"150-250 word philosophy for this topic and age group","days":[{"name":"${daysToGen[0]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"Real song","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}]}`;
-
+      const firstPrompt = `Generate a curriculum week about "${weekTopic}" for ${ageDescriptions[weekAgeGroup]}. ${langInstruction}\n\nReturn ONLY JSON for the theme overview AND ${daysToGen[0]} only:\n{"theme":"Creative name","season":"Any|Spring|Summer|Fall|Winter","focus":"Focus area","teachingPhilosophy":"150-250 word philosophy for this topic and age group","days":[{"name":"${daysToGen[0]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"Real song","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}]}`;
       const firstResp = await fetch("/api/generate-curriculum", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4000, messages: [{ role: "user", content: firstPrompt }] }) });
       if (!firstResp.ok) throw new Error('Server error ' + firstResp.status);
       const firstData = await firstResp.json();
@@ -440,41 +376,21 @@ Return ONLY JSON for the theme overview AND ${daysToGen[0]} only:
       if (!firstText) throw new Error('No response from AI');
       const firstParsed = parseAIJson(firstText);
       if (firstParsed.error) { alert(firstParsed.message); return; }
-
       let allDays = [...firstParsed.days];
-
-      // Step 2: Generate remaining days one at a time
       for (let i = 1; i < daysToGen.length; i++) {
         const prevDaySummaries = allDays.map(d => `${d.name}: Focus="${d.focus}", Song="${d.songTitle}", Stations=[${(d.learningStations||[]).map(s => s.split(' - ')[0]).join(', ')}], Outside="${d.outsideTime}", Indoor="${d.indoorMovement}"`).join('\n');
-        const dayPrompt = `Continue the "${firstParsed.theme}" curriculum for ${ageDescriptions[weekAgeGroup]}.
-
-PREVIOUS DAYS (do NOT repeat any songs, stations, activities, or outside/indoor ideas from these):
-${prevDaySummaries}
-
-Now generate ${daysToGen[i]} ONLY. Every field must be DIFFERENT from previous days — different song, different learning stations, different outside time, different indoor movement, different circle time focus.${i === daysToGen.length - 1 ? ' This is the FINAL day — include review and closure.' : ''} ${langInstruction}
-
-Return ONLY JSON for this single day:
-{"name":"${daysToGen[i]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"Real song","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}`;
-
+        const dayPrompt = `Continue the "${firstParsed.theme}" curriculum for ${ageDescriptions[weekAgeGroup]}.\n\nPREVIOUS DAYS (do NOT repeat any songs, stations, activities, or outside/indoor ideas from these):\n${prevDaySummaries}\n\nNow generate ${daysToGen[i]} ONLY. Every field must be DIFFERENT from previous days.${i === daysToGen.length - 1 ? ' This is the FINAL day — include review and closure.' : ''} ${langInstruction}\n\nReturn ONLY JSON for this single day:\n{"name":"${daysToGen[i]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"Real song","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}`;
         const dayResp = await fetch("/api/generate-curriculum", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, messages: [{ role: "user", content: dayPrompt }] }) });
         if (!dayResp.ok) throw new Error('Server error on day ' + daysToGen[i]);
         const dayData = await dayResp.json();
         const dayText = dayData.content?.[0]?.text;
-        if (dayText) {
-          const dayParsed = parseAIJson(dayText);
-          if (dayParsed && !dayParsed.error && dayParsed.name) allDays.push(dayParsed);
-        }
+        if (dayText) { const dayParsed = parseAIJson(dayText); if (dayParsed && !dayParsed.error && dayParsed.name) allDays.push(dayParsed); }
       }
-
       const dayNameMap = { 'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6 };
       const fullDayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
       const newDays = fullDayNames.map((shortName, idx) => {
         const genDay = allDays.find(d => dayNameMap[d.name] === idx);
-        if (genDay) {
-          const songTitle = genDay.songTitle || '';
-          const songSearchLink = songTitle ? 'https://www.youtube.com/results?search_query=' + encodeURIComponent(songTitle + ' kids song') : '';
-          return { name: shortName, activities: { focusOfDay: genDay.focusOfDay || genDay.focus || '', questionOfDay: genDay.questionOfDay || genDay.qotd || '', circleTime: genDay.circleTime || '', songOfDay: { title: songTitle, link: songSearchLink }, morningActivities: genDay.morningActivities || genDay.learningStations || [''], lunch: genDay.lunch || '', afternoonActivities: genDay.afternoonActivities || [''], vocabWord: genDay.vocabWord || '', teacherTips: genDay.teacherTips || [], outsideTime: genDay.outsideTime || '', indoorMovement: genDay.indoorMovement || '' }};
-        }
+        if (genDay) { const songTitle = genDay.songTitle || ''; const songSearchLink = songTitle ? 'https://www.youtube.com/results?search_query=' + encodeURIComponent(songTitle + ' kids song') : ''; return { name: shortName, activities: { focusOfDay: genDay.focusOfDay || genDay.focus || '', questionOfDay: genDay.questionOfDay || genDay.qotd || '', circleTime: genDay.circleTime || '', songOfDay: { title: songTitle, link: songSearchLink }, morningActivities: genDay.morningActivities || genDay.learningStations || [''], lunch: genDay.lunch || '', afternoonActivities: genDay.afternoonActivities || [''], vocabWord: genDay.vocabWord || '', teacherTips: genDay.teacherTips || [], outsideTime: genDay.outsideTime || '', indoorMovement: genDay.indoorMovement || '' }}; }
         return { name: shortName, activities: {...emptyDay} };
       });
       setNewWeek(prev => ({ ...prev, theme: firstParsed.theme || weekTopic, season: firstParsed.season || 'Any', focus: firstParsed.focus || 'General', teachingPhilosophy: firstParsed.teachingPhilosophy || '', days: newDays }));
@@ -483,21 +399,7 @@ Return ONLY JSON for this single day:
     finally { setIsGeneratingWeek(false); }
   };
 
-  const parseAIJson = (text) => {
-    const jsonStr = text.replace(/```json\n?|\n?```/g, '').trim();
-    let cleanJson = '';
-    let inStr = false;
-    let esc = false;
-    for (let i = 0; i < jsonStr.length; i++) {
-      const ch = jsonStr[i];
-      if (esc) { cleanJson += ch; esc = false; continue; }
-      if (ch === '\\' && inStr) { cleanJson += ch; esc = true; continue; }
-      if (ch === '"') { inStr = !inStr; cleanJson += ch; continue; }
-      if (inStr && (ch === '\n' || ch === '\r')) { cleanJson += '\\n'; continue; }
-      cleanJson += ch;
-    }
-    return JSON.parse(cleanJson);
-  };
+  const parseAIJson = (text) => { const jsonStr = text.replace(/```json\n?|\n?```/g, '').trim(); let cleanJson = ''; let inStr = false; let esc = false; for (let i = 0; i < jsonStr.length; i++) { const ch = jsonStr[i]; if (esc) { cleanJson += ch; esc = false; continue; } if (ch === '\\' && inStr) { cleanJson += ch; esc = true; continue; } if (ch === '"') { inStr = !inStr; cleanJson += ch; continue; } if (inStr && (ch === '\n' || ch === '\r')) { cleanJson += '\\n'; continue; } cleanJson += ch; } return JSON.parse(cleanJson); };
 
   const updWeek = (f, v) => setNewWeek(p => ({ ...p, [f]: v }));
   const togDay = (i) => setNewWeek(p => ({ ...p, daysToInclude: p.daysToInclude.map((d, j) => j === i ? (d ? 0 : 1) : d) }));
@@ -516,8 +418,9 @@ Return ONLY JSON for this single day:
   const currentWeek = selectedWeek || weeks[0] || {};
   const dayData = currentWeek.hasRichData && currentWeek.days ? currentWeek.days[selectedDay] : null;
 
-  // LOGIN SCREEN
-  // Show loading while Netlify Identity initializes
+  // ============ RENDER ============
+
+  // Loading screen
   if (!authReady) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
@@ -531,6 +434,7 @@ Return ONLY JSON for this single day:
     );
   }
 
+  // Login screen
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
@@ -542,15 +446,119 @@ Return ONLY JSON for this single day:
             <h1 className="text-3xl font-bold" style={{color: c.wood}}>The Formula</h1>
             <p className="text-sm mt-2" style={{color: c.bark}}>Prepared Nannies. Informed Parents. Better Care.</p>
           </div>
-          
           <div className="bg-white rounded-2xl p-6 shadow-lg" style={{border: `2px solid ${c.sand}`}}>
             <h2 className="text-xl font-bold mb-2 text-center" style={{color: c.wood}}>Welcome</h2>
             <p className="text-sm text-center mb-6" style={{color: c.bark}}>Sign in or create an account to access your curriculum.</p>
-            <button onClick={openLogin} className="w-full py-3 rounded-lg font-semibold text-white" style={{backgroundColor: c.terra}}>
-              Sign In / Sign Up
-            </button>
+            <button onClick={openLogin} className="w-full py-3 rounded-lg font-semibold text-white" style={{backgroundColor: c.terra}}>Sign In / Sign Up</button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // Subscription loading
+  if (subscription.loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
+        <div className="text-center">
+          <div className="w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center" style={{backgroundColor: c.terra}}>
+            <span className="text-4xl font-bold text-white">F</span>
+          </div>
+          <Loader className="w-6 h-6 animate-spin mx-auto mb-2" style={{color: c.terra}} />
+          <p className="text-sm" style={{color: c.bark}}>Loading your account...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ============ PRICING PAGE ============
+  const PricingPage = () => (
+    <div className="p-4 pb-24">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <p className="text-sm" style={{color: c.bark}}>Welcome, {currentUser?.name}</p>
+          <h1 className="text-xl font-bold" style={{color: c.wood}}>Choose Your Plan</h1>
+        </div>
+        <button onClick={handleLogout} className="p-2 rounded-full" style={{backgroundColor: c.sand}}>
+          <LogOut className="w-5 h-5" style={{color: c.wood}} />
+        </button>
+      </div>
+
+      {checkoutMessage && (
+        <div className={`rounded-xl p-4 mb-4 flex items-start gap-3 ${checkoutMessage.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
+          {checkoutMessage.type === 'success' ? <Check className="w-5 h-5 text-green-600 mt-0.5" /> : <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />}
+          <p className={`text-sm ${checkoutMessage.type === 'success' ? 'text-green-800' : 'text-yellow-800'}`}>{checkoutMessage.text}</p>
+          <button onClick={() => setCheckoutMessage(null)}><X className="w-4 h-4 text-gray-400" /></button>
+        </div>
+      )}
+
+      <div className="text-center mb-6">
+        <p className="text-sm mb-3" style={{color: c.bark}}>Professional early childhood curriculum for nannies and families</p>
+        <div className="inline-flex rounded-full p-1" style={{backgroundColor: c.sand}}>
+          <button onClick={() => setBillingCycle('monthly')} className="px-4 py-2 rounded-full text-sm font-medium transition-all" style={{backgroundColor: billingCycle === 'monthly' ? c.terra : 'transparent', color: billingCycle === 'monthly' ? 'white' : c.wood}}>Monthly</button>
+          <button onClick={() => setBillingCycle('yearly')} className="px-4 py-2 rounded-full text-sm font-medium transition-all" style={{backgroundColor: billingCycle === 'yearly' ? c.terra : 'transparent', color: billingCycle === 'yearly' ? 'white' : c.wood}}>Yearly <span className="text-xs opacity-80">(Save 2 months)</span></button>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {/* GOLD */}
+        <div className="bg-white rounded-2xl p-5 shadow-lg" style={{border: `2px solid ${c.sand}`}}>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{backgroundColor: '#fbbf24'}}><Star className="w-5 h-5 text-white" /></div>
+            <div>
+              <h3 className="font-bold text-lg" style={{color: c.wood}}>Gold</h3>
+              <div className="flex items-baseline gap-1">
+                <span className="text-2xl font-bold" style={{color: c.wood}}>${billingCycle === 'monthly' ? '24.99' : '249.90'}</span>
+                <span className="text-sm" style={{color: c.bark}}>/{billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
+              </div>
+            </div>
+          </div>
+          <ul className="space-y-2 mb-4">
+            {['14+ gold standard curriculum weeks', 'Full circle time scripts & learning stations', 'AI-powered parent letter generator', 'Activity logging & milestone tracking', 'Child profiles with parent info', 'All age groups: 0-5 years'].map((f, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm" style={{color: c.wood}}><Check className="w-4 h-4 mt-0.5 flex-shrink-0" style={{color: '#059669'}} />{f}</li>
+            ))}
+          </ul>
+          <button onClick={() => startCheckout(billingCycle === 'monthly' ? 'gold_monthly' : 'gold_yearly')} className="w-full py-3 rounded-xl font-semibold text-white" style={{backgroundColor: '#fbbf24'}}>Get Gold</button>
+        </div>
+
+        {/* PLATINUM */}
+        <div className="bg-white rounded-2xl p-5 shadow-lg relative" style={{border: `2px solid ${c.terra}`}}>
+          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold text-white" style={{backgroundColor: c.terra}}>MOST POPULAR</div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{backgroundColor: c.terra}}><Crown className="w-5 h-5 text-white" /></div>
+            <div>
+              <h3 className="font-bold text-lg" style={{color: c.wood}}>Platinum</h3>
+              <div className="flex items-baseline gap-1">
+                <span className="text-2xl font-bold" style={{color: c.wood}}>${billingCycle === 'monthly' ? '44.99' : '449.90'}</span>
+                <span className="text-sm" style={{color: c.bark}}>/{billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
+              </div>
+            </div>
+          </div>
+          <ul className="space-y-2 mb-4">
+            {['Everything in Gold, plus:', 'AI curriculum generator — unlimited custom weeks', 'Custom week creation & inline editing', 'Full creative control over your curriculum', 'Priority support'].map((f, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm" style={{color: c.wood}}><Check className="w-4 h-4 mt-0.5 flex-shrink-0" style={{color: c.terra}} />{f}</li>
+            ))}
+          </ul>
+          <button onClick={() => startCheckout(billingCycle === 'monthly' ? 'platinum_monthly' : 'platinum_yearly')} className="w-full py-3 rounded-xl font-semibold text-white" style={{backgroundColor: c.terra}}>Get Platinum</button>
+        </div>
+
+        {/* Agency note */}
+        <div className="rounded-xl p-4" style={{backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0'}}>
+          <div className="flex items-center gap-2 mb-2">
+            <Shield className="w-5 h-5" style={{color: '#059669'}} />
+            <h4 className="font-semibold text-sm" style={{color: '#065f46'}}>Agency-Placed Nannies</h4>
+          </div>
+          <p className="text-xs" style={{color: '#065f46'}}>Nannies placed through our agency receive free Gold access while active, and 30% off Platinum. Contact your agency administrator for access.</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Show pricing page if no active subscription
+  if (!hasGold() && view !== 'pricing' && view !== 'settings') {
+    return (
+      <div className="min-h-screen" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
+        <PricingPage />
       </div>
     );
   }
@@ -559,6 +567,15 @@ Return ONLY JSON for this single day:
   return (
     <div className="min-h-screen" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
       
+      {/* Checkout success message */}
+      {checkoutMessage && (
+        <div className={`mx-4 mt-4 rounded-xl p-4 flex items-start gap-3 ${checkoutMessage.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
+          {checkoutMessage.type === 'success' ? <Check className="w-5 h-5 text-green-600 mt-0.5" /> : <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />}
+          <p className={`text-sm flex-1 ${checkoutMessage.type === 'success' ? 'text-green-800' : 'text-yellow-800'}`}>{checkoutMessage.text}</p>
+          <button onClick={() => setCheckoutMessage(null)}><X className="w-4 h-4 text-gray-400" /></button>
+        </div>
+      )}
+
       {/* DASHBOARD */}
       {view === 'dashboard' && (
         <div className="p-4 space-y-5 pb-24">
@@ -567,9 +584,15 @@ Return ONLY JSON for this single day:
               <p className="text-sm" style={{color: c.bark}}>Welcome,</p>
               <h1 className="text-xl font-bold" style={{color: c.wood}}>{currentUser?.name}</h1>
             </div>
-            <button onClick={handleLogout} className="p-2 rounded-full" style={{backgroundColor: c.sand}}>
-              <LogOut className="w-5 h-5" style={{color: c.wood}} />
-            </button>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-1 rounded-full text-xs font-medium" style={{
+                backgroundColor: hasPlatinum() ? c.terra : '#fbbf24',
+                color: 'white'
+              }}>{hasPlatinum() ? '✦ Platinum' : '★ Gold'}{subscription.isAgency ? ' (Agency)' : ''}</span>
+              <button onClick={handleLogout} className="p-2 rounded-full" style={{backgroundColor: c.sand}}>
+                <LogOut className="w-5 h-5" style={{color: c.wood}} />
+              </button>
+            </div>
           </div>
           <div className="bg-white rounded-2xl p-6 shadow-lg" style={{border: `2px solid ${c.sand}`}}>
             <h2 className="text-2xl font-bold mb-2" style={{color: c.wood}}>This Week's Theme</h2>
@@ -598,10 +621,36 @@ Return ONLY JSON for this single day:
             <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{backgroundColor: c.terra}}><TrendingUp className="w-5 h-5 text-white" /></div><span className="font-semibold" style={{color: c.bark}}>Milestones</span></div>
             <ChevronRight className="w-5 h-5" style={{color: c.bark}} />
           </button>
+          {/* Upgrade banner for Gold users */}
+          {hasGold() && !hasPlatinum() && (
+            <button onClick={() => setView('pricing')} className="w-full rounded-2xl p-4 shadow-md flex items-center justify-between" style={{backgroundColor: c.terra, border: `2px solid ${c.wood}`}}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white bg-opacity-20"><Crown className="w-5 h-5 text-white" /></div>
+                <div className="text-left">
+                  <span className="font-semibold text-white">Upgrade to Platinum</span>
+                  <p className="text-xs text-white opacity-80">Unlock AI curriculum generator</p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-white" />
+            </button>
+          )}
           <button onClick={() => setView('settings')} className="w-full bg-white rounded-2xl p-4 shadow-md flex items-center justify-between" style={{border: `2px solid ${c.sand}`}}>
             <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{backgroundColor: c.bark}}><Settings className="w-5 h-5 text-white" /></div><span className="font-semibold" style={{color: c.bark}}>Settings</span></div>
             <ChevronRight className="w-5 h-5" style={{color: c.bark}} />
           </button>
+        </div>
+      )}
+
+      {/* PRICING (upgrade page for Gold users) */}
+      {view === 'pricing' && (
+        <div>
+          <div className="p-4">
+            <div className="flex items-center gap-3 mb-4">
+              <button onClick={() => setView(hasGold() ? 'dashboard' : 'dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+              <h2 className="text-xl font-bold" style={{color: c.wood}}>{hasGold() ? 'Upgrade Your Plan' : 'Choose Your Plan'}</h2>
+            </div>
+          </div>
+          <PricingPage />
         </div>
       )}
 
@@ -625,17 +674,15 @@ Return ONLY JSON for this single day:
                 {allFocusAreas.map(f => <option key={f} value={f}>{f === 'All' ? 'All Focus Areas' : f}</option>)}
               </select>
             </div>
-            <div className="flex gap-2">
-              <select value={ageFilter} onChange={(e) => setAgeFilter(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{borderColor: c.sand, color: c.wood}}>
-                <option value="all">All Ages</option>
-                <option value="0-6m">0–6 months</option>
-                <option value="6m-1">6 months–1 year</option>
-                <option value="1-2">1-2 years</option>
-                <option value="2-3">2-3 years</option>
-                <option value="3-4">3-4 years</option>
-                <option value="4-5">4-5 years</option>
-              </select>
-            </div>
+            <select value={ageFilter} onChange={(e) => setAgeFilter(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" style={{borderColor: c.sand, color: c.wood}}>
+              <option value="all">All Ages</option>
+              <option value="0-6m">0–6 months</option>
+              <option value="6m-1">6 months–1 year</option>
+              <option value="1-2">1-2 years</option>
+              <option value="2-3">2-3 years</option>
+              <option value="3-4">3-4 years</option>
+              <option value="4-5">4-5 years</option>
+            </select>
             {(searchTerm || filterSeason !== 'All' || filterFocus !== 'All' || ageFilter !== 'all') && (
               <div className="flex justify-between items-center">
                 <span className="text-xs" style={{color: c.bark}}>{filteredWeeks.length} themes found</span>
@@ -643,15 +690,26 @@ Return ONLY JSON for this single day:
               </div>
             )}
           </div>
-          <button onClick={() => setView('customWeek')} className="w-full bg-white rounded-xl p-4 mb-4 shadow-md flex items-center gap-3" style={{border: `2px dashed ${c.terra}`}}>
-            <Plus className="w-5 h-5" style={{color: c.terra}} /><span className="font-semibold" style={{color: c.terra}}>Create Custom Week</span>
-          </button>
+          
+          {/* Create Custom Week — Platinum only */}
+          {hasPlatinum() ? (
+            <button onClick={() => setView('customWeek')} className="w-full bg-white rounded-xl p-4 mb-4 shadow-md flex items-center gap-3" style={{border: `2px dashed ${c.terra}`}}>
+              <Plus className="w-5 h-5" style={{color: c.terra}} /><span className="font-semibold" style={{color: c.terra}}>Create Custom Week</span>
+            </button>
+          ) : (
+            <div className="w-full rounded-xl p-4 mb-4 flex items-center gap-3 opacity-75" style={{backgroundColor: '#f5f0eb', border: `2px dashed ${c.sand}`}}>
+              <Lock className="w-5 h-5" style={{color: c.bark}} />
+              <div className="flex-1">
+                <span className="font-semibold text-sm" style={{color: c.bark}}>Create Custom Week</span>
+                <p className="text-xs" style={{color: c.bark}}>Upgrade to Platinum to create custom curricula</p>
+              </div>
+              <button onClick={() => setView('pricing')} className="px-3 py-1 rounded-full text-xs font-medium text-white" style={{backgroundColor: c.terra}}>Upgrade</button>
+            </div>
+          )}
+
           <div className="space-y-3">
             {loadingWeeks ? (
-              <div className="text-center py-8">
-                <Loader className="w-6 h-6 animate-spin mx-auto mb-2" style={{color: c.terra}} />
-                <p className="text-sm" style={{color: c.bark}}>Loading curriculum...</p>
-              </div>
+              <div className="text-center py-8"><Loader className="w-6 h-6 animate-spin mx-auto mb-2" style={{color: c.terra}} /><p className="text-sm" style={{color: c.bark}}>Loading curriculum...</p></div>
             ) : filteredWeeks.map(w => (
               <div key={w.id} className="bg-white rounded-xl p-4 shadow-md cursor-pointer" style={{border: `1px solid ${c.sand}`}} onClick={() => selectWeek(w)}>
                 <div className="flex justify-between items-start">
@@ -687,7 +745,8 @@ Return ONLY JSON for this single day:
               )}
               <p className="text-sm" style={{color: c.bark}}>{currentWeek.focus} • {currentWeek.season}</p>
             </div>
-            {currentWeek.isCustom && (
+            {/* Edit button — Platinum only for custom weeks */}
+            {currentWeek.isCustom && hasPlatinum() && (
               isEditMode ? (
                 <button onClick={saveEdits} disabled={editSaving} className="px-3 py-2 rounded-full text-sm font-medium" style={{backgroundColor: c.terra, color: 'white'}}>
                   {editSaving ? <Loader className="w-4 h-4 animate-spin" /> : 'Save'}
@@ -704,14 +763,10 @@ Return ONLY JSON for this single day:
             ))}
           </div>
           
-          {/* Teaching Philosophy (for enhanced weeks) */}
           {currentWeek.teachingPhilosophy && (
             <div className="rounded-xl p-4 mb-4 shadow-md" style={{backgroundColor: '#ecfdf5', border: `1px solid ${c.sand}`}}>
               <button onClick={() => setExpandedPhilosophy(!expandedPhilosophy)} className="w-full flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span style={{fontSize: '1.25rem'}}>&#127793;</span>
-                  <h3 className="font-semibold" style={{color: c.wood}}>Teaching Philosophy</h3>
-                </div>
+                <div className="flex items-center gap-2"><span style={{fontSize: '1.25rem'}}>&#127793;</span><h3 className="font-semibold" style={{color: c.wood}}>Teaching Philosophy</h3></div>
                 {expandedPhilosophy ? <ChevronUp className="w-5 h-5" style={{color: c.bark}} /> : <ChevronDown className="w-5 h-5" style={{color: c.bark}} />}
               </button>
               {expandedPhilosophy && (isEditMode ? (
@@ -722,10 +777,8 @@ Return ONLY JSON for this single day:
             </div>
           )}
           
-          {/* Enhanced Daily Routine - Age Aware */}
+          {/* Daily Routine */}
           {(() => {
-            // Determine which daily routine to show based on week's target age
-            // Gold standard weeks use routineGroup field; detect infant weeks by age tags
             const weekAges = Array.isArray(currentWeek.ages) ? currentWeek.ages : (currentWeek.ages ? [currentWeek.ages] : []);
             const isInfantOnly = weekAges.length > 0 && weekAges.every(a => a === "0-6m" || a === "6m-1");
             const routineGroup = currentWeek.routineGroup || (isInfantOnly && weekAges.includes("0-6m") ? "0-6" : isInfantOnly ? "6-12" : null);
@@ -735,26 +788,15 @@ Return ONLY JSON for this single day:
               return (
                 <div className="rounded-xl p-4 mb-4 shadow-md" style={{backgroundColor: '#fffbeb', border: `1px solid ${c.sand}`}}>
                   <button onClick={() => setExpandedDailyRoutine(!expandedDailyRoutine)} className="w-full flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-5 h-5" style={{color: c.terra}} />
-                      <h3 className="font-semibold" style={{color: c.wood}}>{infantRoutine.label}</h3>
-                    </div>
+                    <div className="flex items-center gap-2"><Calendar className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>{infantRoutine.label}</h3></div>
                     {expandedDailyRoutine ? <ChevronUp className="w-5 h-5" style={{color: c.bark}} /> : <ChevronDown className="w-5 h-5" style={{color: c.bark}} />}
                   </button>
                   {expandedDailyRoutine ? (
                     <div className="mt-3 space-y-3 text-sm" style={{color: c.wood}}>
-                      {infantRoutine.items.map((item, i) => (
-                        <div key={i} className="p-3 rounded-lg" style={{backgroundColor: 'rgba(255,255,255,0.7)'}}>
-                          <p className="font-semibold mb-1">{i + 1}. {item.title}</p>
-                          <p className="italic text-sm">{item.description}</p>
-                        </div>
-                      ))}
+                      {infantRoutine.items.map((item, i) => (<div key={i} className="p-3 rounded-lg" style={{backgroundColor: 'rgba(255,255,255,0.7)'}}><p className="font-semibold mb-1">{i + 1}. {item.title}</p><p className="italic text-sm">{item.description}</p></div>))}
                     </div>
                   ) : (
-                    <div className="mt-2 text-sm" style={{color: c.bark}}>
-                      <p>{infantRoutine.items.map(item => item.title).join(' - ')}</p>
-                      <p className="text-xs mt-1" style={{color: c.terra}}>Tap to view full instructions</p>
-                    </div>
+                    <div className="mt-2 text-sm" style={{color: c.bark}}><p>{infantRoutine.items.map(item => item.title).join(' - ')}</p><p className="text-xs mt-1" style={{color: c.terra}}>Tap to view full instructions</p></div>
                   )}
                 </div>
               );
@@ -763,41 +805,19 @@ Return ONLY JSON for this single day:
             return (
               <div className="rounded-xl p-4 mb-4 shadow-md" style={{backgroundColor: '#fffbeb', border: `1px solid ${c.sand}`}}>
                 <button onClick={() => setExpandedDailyRoutine(!expandedDailyRoutine)} className="w-full flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-5 h-5" style={{color: c.terra}} />
-                    <h3 className="font-semibold" style={{color: c.wood}}>Daily Routine</h3>
-                  </div>
+                  <div className="flex items-center gap-2"><Calendar className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Daily Routine</h3></div>
                   {expandedDailyRoutine ? <ChevronUp className="w-5 h-5" style={{color: c.bark}} /> : <ChevronDown className="w-5 h-5" style={{color: c.bark}} />}
                 </button>
                 {expandedDailyRoutine ? (
                   <div className="mt-3 space-y-3 text-sm" style={{color: c.wood}}>
-                    <div className="p-3 rounded-lg" style={{backgroundColor: 'rgba(255,255,255,0.7)'}}>
-                      <p className="font-semibold mb-1">1. Calendar Time</p>
-                      <p className="italic text-sm">{universalDailyRoutine.calendarTime}</p>
-                    </div>
-                    <div className="p-3 rounded-lg" style={{backgroundColor: 'rgba(255,255,255,0.7)'}}>
-                      <p className="font-semibold mb-1">2. Counting Practice</p>
-                      <p className="italic text-sm">{universalDailyRoutine.countingPractice}</p>
-                    </div>
-                    <div className="p-3 rounded-lg" style={{backgroundColor: 'rgba(255,255,255,0.7)'}}>
-                      <p className="font-semibold mb-1">3. Days of the Week</p>
-                      <p className="italic text-sm">{universalDailyRoutine.daysOfWeek}</p>
-                      <a href={universalDailyRoutine.daysOfWeekSong} target="_blank" rel="noopener noreferrer" className="text-xs underline mt-1 inline-block" style={{color: c.terra}}>Days of the Week Song</a>
-                    </div>
-                    <div className="p-3 rounded-lg" style={{backgroundColor: 'rgba(255,255,255,0.7)'}}>
-                      <p className="font-semibold mb-1">4. Weather Check</p>
-                      <p className="italic text-sm">{universalDailyRoutine.weatherCheck}</p>
-                    </div>
-                    <div className="p-3 rounded-lg" style={{backgroundColor: 'rgba(255,255,255,0.7)'}}>
-                      <p className="font-semibold mb-1">5. ABC Practice</p>
-                      <p className="italic text-sm">{universalDailyRoutine.abcPractice}</p>
-                    </div>
+                    <div className="p-3 rounded-lg" style={{backgroundColor: 'rgba(255,255,255,0.7)'}}><p className="font-semibold mb-1">1. Calendar Time</p><p className="italic text-sm">{universalDailyRoutine.calendarTime}</p></div>
+                    <div className="p-3 rounded-lg" style={{backgroundColor: 'rgba(255,255,255,0.7)'}}><p className="font-semibold mb-1">2. Counting Practice</p><p className="italic text-sm">{universalDailyRoutine.countingPractice}</p></div>
+                    <div className="p-3 rounded-lg" style={{backgroundColor: 'rgba(255,255,255,0.7)'}}><p className="font-semibold mb-1">3. Days of the Week</p><p className="italic text-sm">{universalDailyRoutine.daysOfWeek}</p><a href={universalDailyRoutine.daysOfWeekSong} target="_blank" rel="noopener noreferrer" className="text-xs underline mt-1 inline-block" style={{color: c.terra}}>Days of the Week Song</a></div>
+                    <div className="p-3 rounded-lg" style={{backgroundColor: 'rgba(255,255,255,0.7)'}}><p className="font-semibold mb-1">4. Weather Check</p><p className="italic text-sm">{universalDailyRoutine.weatherCheck}</p></div>
+                    <div className="p-3 rounded-lg" style={{backgroundColor: 'rgba(255,255,255,0.7)'}}><p className="font-semibold mb-1">5. ABC Practice</p><p className="italic text-sm">{universalDailyRoutine.abcPractice}</p></div>
                   </div>
                 ) : (
-                  <div className="mt-2 text-sm" style={{color: c.bark}}>
-                    <p>Calendar - Counting - Days of the Week - Weather - ABCs</p>
-                    <p className="text-xs mt-1" style={{color: c.terra}}>Tap to view full instructions</p>
-                  </div>
+                  <div className="mt-2 text-sm" style={{color: c.bark}}><p>Calendar - Counting - Days of the Week - Weather - ABCs</p><p className="text-xs mt-1" style={{color: c.terra}}>Tap to view full instructions</p></div>
                 )}
               </div>
             );
@@ -840,10 +860,7 @@ Return ONLY JSON for this single day:
                     <input value={dayData.songLink || ''} onChange={e => editDayField(selectedDay, 'songLink', e.target.value)} placeholder="YouTube link" className="w-full px-2 py-1 rounded-lg border text-sm" style={{borderColor: c.terra, color: c.wood}} />
                   </div>
                 ) : (
-                  <>
-                    <p className="font-medium" style={{color: c.wood}}>{dayData.songTitle}</p>
-                    {dayData.songLink && <a href={dayData.songLink} target="_blank" rel="noopener noreferrer" className="text-sm underline" style={{color: c.terra}}>{dayData.songLink.includes('search_query') ? 'Find on YouTube →' : 'Watch on YouTube →'}</a>}
-                  </>
+                  <><p className="font-medium" style={{color: c.wood}}>{dayData.songTitle}</p>{dayData.songLink && <a href={dayData.songLink} target="_blank" rel="noopener noreferrer" className="text-sm underline" style={{color: c.terra}}>{dayData.songLink.includes('search_query') ? 'Find on YouTube →' : 'Watch on YouTube →'}</a>}</>
                 )}
               </div>
               {dayData.learningStations && (
@@ -858,10 +875,7 @@ Return ONLY JSON for this single day:
               )}
               {dayData.teacherTips && dayData.teacherTips.length > 0 && (
                 <div className="rounded-xl p-4 shadow-md" style={{backgroundColor: '#faf5ff', border: `1px solid ${c.sand}`}}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Lightbulb className="w-5 h-5" style={{color: '#8b5cf6'}} />
-                    <h3 className="font-semibold" style={{color: c.wood}}>Teacher Tips</h3>
-                  </div>
+                  <div className="flex items-center gap-2 mb-2"><Lightbulb className="w-5 h-5" style={{color: '#8b5cf6'}} /><h3 className="font-semibold" style={{color: c.wood}}>Teacher Tips</h3></div>
                   {isEditMode ? (
                     <div className="space-y-2">{dayData.teacherTips.map((tip, i) => <input key={i} value={tip} onChange={e => editDayTip(selectedDay, i, e.target.value)} className="w-full px-2 py-1 rounded-lg border text-sm" style={{borderColor: '#8b5cf6', color: c.wood}} />)}</div>
                   ) : (
@@ -871,19 +885,13 @@ Return ONLY JSON for this single day:
               )}
               {(dayData.outsideTime || isEditMode) && (
                 <div className="rounded-xl p-4 shadow-md" style={{backgroundColor: '#ecfdf5', border: `1px solid ${c.sand}`}}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Sun className="w-5 h-5" style={{color: '#059669'}} />
-                    <h3 className="font-semibold" style={{color: c.wood}}>Outside Time</h3>
-                  </div>
+                  <div className="flex items-center gap-2 mb-2"><Sun className="w-5 h-5" style={{color: '#059669'}} /><h3 className="font-semibold" style={{color: c.wood}}>Outside Time</h3></div>
                   {isEditMode ? <textarea value={dayData.outsideTime || ''} onChange={e => editDayField(selectedDay, 'outsideTime', e.target.value)} rows={3} className="w-full px-2 py-1 rounded-lg border text-sm" style={{borderColor: '#059669', color: c.wood}} /> : <p className="text-sm" style={{color: c.wood}}>{dayData.outsideTime}</p>}
                 </div>
               )}
               {(dayData.indoorMovement || isEditMode) && (
                 <div className="rounded-xl p-4 shadow-md" style={{backgroundColor: '#fef3c7', border: `1px solid ${c.sand}`}}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Home className="w-5 h-5" style={{color: '#d97706'}} />
-                    <h3 className="font-semibold" style={{color: c.wood}}>Indoor Movement Alternative</h3>
-                  </div>
+                  <div className="flex items-center gap-2 mb-2"><Home className="w-5 h-5" style={{color: '#d97706'}} /><h3 className="font-semibold" style={{color: c.wood}}>Indoor Movement Alternative</h3></div>
                   {isEditMode ? <textarea value={dayData.indoorMovement || ''} onChange={e => editDayField(selectedDay, 'indoorMovement', e.target.value)} rows={3} className="w-full px-2 py-1 rounded-lg border text-sm" style={{borderColor: '#d97706', color: c.wood}} /> : <p className="text-sm" style={{color: c.wood}}>{dayData.indoorMovement}</p>}
                 </div>
               )}
@@ -901,15 +909,15 @@ Return ONLY JSON for this single day:
                   <div className="flex items-center gap-2"><Sun className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Circle Time</h3></div>
                   {expandedCircleTime ? <ChevronUp className="w-5 h-5" style={{color: c.bark}} /> : <ChevronDown className="w-5 h-5" style={{color: c.bark}} />}
                 </button>
-                {expandedCircleTime && <div className="mt-3 p-3 rounded-lg whitespace-pre-wrap text-sm" style={{backgroundColor: c.cream, color: c.wood}}>{currentWeek.activities.circleTime}</div>}
+                {expandedCircleTime && <div className="mt-3 p-3 rounded-lg whitespace-pre-wrap text-sm" style={{backgroundColor: c.cream, color: c.wood}}>{currentWeek.activities?.circleTime}</div>}
               </div>
               <div className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
                 <div className="flex items-center gap-2 mb-2"><Music className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Song of the Day</h3></div>
-                <p style={{color: c.bark}}>{currentWeek.activities.songOfDay.title}</p>
+                <p style={{color: c.bark}}>{currentWeek.activities?.songOfDay?.title}</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white rounded-xl p-3 shadow-md" style={{border: `1px solid ${c.sand}`}}><p className="text-xs font-medium mb-1" style={{color: c.bark}}>Morning</p><p className="text-sm font-semibold" style={{color: c.wood}}>{currentWeek.activities.morningActivity}</p></div>
-                <div className="bg-white rounded-xl p-3 shadow-md" style={{border: `1px solid ${c.sand}`}}><p className="text-xs font-medium mb-1" style={{color: c.bark}}>Afternoon</p><p className="text-sm font-semibold" style={{color: c.wood}}>{currentWeek.activities.afternoonActivity}</p></div>
+                <div className="bg-white rounded-xl p-3 shadow-md" style={{border: `1px solid ${c.sand}`}}><p className="text-xs font-medium mb-1" style={{color: c.bark}}>Morning</p><p className="text-sm font-semibold" style={{color: c.wood}}>{currentWeek.activities?.morningActivity}</p></div>
+                <div className="bg-white rounded-xl p-3 shadow-md" style={{border: `1px solid ${c.sand}`}}><p className="text-xs font-medium mb-1" style={{color: c.bark}}>Afternoon</p><p className="text-sm font-semibold" style={{color: c.wood}}>{currentWeek.activities?.afternoonActivity}</p></div>
               </div>
             </div>
           )}
@@ -937,17 +945,10 @@ Return ONLY JSON for this single day:
               </select>
               <div className="mb-3">
                 <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" />
-                <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 rounded-lg border" style={{borderColor: c.sand, color: c.bark}}>
-                  <Camera className="w-4 h-4" /><span className="text-sm">Add Photos</span>
-                </button>
+                <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 rounded-lg border" style={{borderColor: c.sand, color: c.bark}}><Camera className="w-4 h-4" /><span className="text-sm">Add Photos</span></button>
                 {logForm.photos?.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {logForm.photos.map(photo => (
-                      <div key={photo.id} className="relative">
-                        <img src={photo.data} alt="" className="w-16 h-16 object-cover rounded-lg" />
-                        <button onClick={() => removePhoto(photo.id)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center"><X className="w-3 h-3 text-white" /></button>
-                      </div>
-                    ))}
+                    {logForm.photos.map(photo => (<div key={photo.id} className="relative"><img src={photo.data} alt="" className="w-16 h-16 object-cover rounded-lg" /><button onClick={() => removePhoto(photo.id)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center"><X className="w-3 h-3 text-white" /></button></div>))}
                   </div>
                 )}
               </div>
@@ -1118,110 +1119,99 @@ Return ONLY JSON for this single day:
         </div>
       )}
 
-      {/* CUSTOM WEEK */}
+      {/* CUSTOM WEEK — Platinum only */}
       {view === 'customWeek' && (
-        <div className="p-4 pb-24">
-          <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => setView('weeklyThemes')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
-            <h2 className="text-xl font-bold" style={{color: c.wood}}>Create Custom Week</h2>
-          </div>
-          
-          {/* AI Generation Section */}
-          <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `2px solid ${c.terra}`}}>
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles className="w-5 h-5" style={{color: c.terra}} />
-              <h3 className="font-semibold" style={{color: c.wood}}>Generate with AI</h3>
+        hasPlatinum() ? (
+          <div className="p-4 pb-24">
+            <div className="flex items-center gap-3 mb-4">
+              <button onClick={() => setView('weeklyThemes')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+              <h2 className="text-xl font-bold" style={{color: c.wood}}>Create Custom Week</h2>
             </div>
-            <p className="text-sm mb-3" style={{color: c.bark}}>Select an age group, enter a topic, and let AI create a full week's curriculum!</p>
-            <div className="flex gap-2 mb-3">
-              {['0-6m', '6m-1', '1-2', '2-3', '3-4', '4-5'].map(age => (
-                <button key={age} onClick={() => setWeekAgeGroup(age)} className="flex-1 py-2 rounded-lg text-sm font-medium" style={{backgroundColor: weekAgeGroup === age ? c.terra : c.sand, color: weekAgeGroup === age ? 'white' : c.wood}}>{age === '0-6m' ? '0–6m' : age === '6m-1' ? '6m–1yr' : age + ' yrs'}</button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input placeholder="e.g., Butterflies, Space, Cooking, Kindness..." value={weekTopic} onChange={e => setWeekTopic(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} onKeyDown={e => e.key === 'Enter' && !isGeneratingWeek && weekTopic.trim() && generateAIWeek()} />
-              <button onClick={generateAIWeek} disabled={isGeneratingWeek || !weekTopic.trim()} className="px-4 py-2 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50" style={{backgroundColor: c.terra, color: 'white'}}>
-                {isGeneratingWeek ? <><Loader className="w-4 h-4 animate-spin" />...</> : <><Sparkles className="w-4 h-4" />Generate</>}
-              </button>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex-1 h-px" style={{backgroundColor: c.sand}}></div>
-            <span className="text-sm" style={{color: c.bark}}>or build manually</span>
-            <div className="flex-1 h-px" style={{backgroundColor: c.sand}}></div>
-          </div>
-          
-          <div className="bg-white rounded-xl p-4 mb-4 shadow-md space-y-3" style={{border: `1px solid ${c.sand}`}}>
-            <input placeholder="Theme Name" value={newWeek.theme} onChange={e => updWeek('theme', e.target.value)} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
-            <div className="grid grid-cols-2 gap-2">
-              <select value={newWeek.season} onChange={e => updWeek('season', e.target.value)} className="px-3 py-2 rounded-lg border" style={{borderColor: c.sand}}>
-                <option value="">Season</option>
-                {['Any', 'Spring', 'Summer', 'Fall', 'Winter', 'Spring/Summer', 'Fall/Winter'].map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <input placeholder="Focus Area" value={newWeek.focus} onChange={e => updWeek('focus', e.target.value)} className="px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
-            </div>
-            <div>
-              <label className="text-sm font-medium block mb-2" style={{color: c.wood}}>Days to Include</label>
-              <div className="flex gap-1">
-                {['M','T','W','T','F','S','S'].map((d, i) => (
-                  <button key={i} onClick={() => togDay(i)} className="w-9 h-9 rounded-full text-sm font-medium" style={{backgroundColor: newWeek.daysToInclude[i] ? c.terra : c.sand, color: newWeek.daysToInclude[i] ? 'white' : c.wood}}>{d}</button>
+            <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `2px solid ${c.terra}`}}>
+              <div className="flex items-center gap-2 mb-3"><Sparkles className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Generate with AI</h3></div>
+              <p className="text-sm mb-3" style={{color: c.bark}}>Select an age group, enter a topic, and let AI create a full week's curriculum!</p>
+              <div className="flex gap-2 mb-3">
+                {['0-6m', '6m-1', '1-2', '2-3', '3-4', '4-5'].map(age => (
+                  <button key={age} onClick={() => setWeekAgeGroup(age)} className="flex-1 py-2 rounded-lg text-sm font-medium" style={{backgroundColor: weekAgeGroup === age ? c.terra : c.sand, color: weekAgeGroup === age ? 'white' : c.wood}}>{age === '0-6m' ? '0–6m' : age === '6m-1' ? '6m–1yr' : age + ' yrs'}</button>
                 ))}
               </div>
-            </div>
-          </div>
-          {activeDays.length > 0 && (
-            <>
-              <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-                {activeDays.map((d, i) => (
-                  <button key={i} onClick={() => setDayIdx(i)} className="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap" style={{backgroundColor: dayIdx === i ? c.terra : c.sand, color: dayIdx === i ? 'white' : c.wood}}>{d.name}</button>
-                ))}
+              <div className="flex gap-2">
+                <input placeholder="e.g., Butterflies, Space, Cooking, Kindness..." value={weekTopic} onChange={e => setWeekTopic(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} onKeyDown={e => e.key === 'Enter' && !isGeneratingWeek && weekTopic.trim() && generateAIWeek()} />
+                <button onClick={generateAIWeek} disabled={isGeneratingWeek || !weekTopic.trim()} className="px-4 py-2 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50" style={{backgroundColor: c.terra, color: 'white'}}>
+                  {isGeneratingWeek ? <><Loader className="w-4 h-4 animate-spin" />...</> : <><Sparkles className="w-4 h-4" />Generate</>}
+                </button>
               </div>
-              <div className="bg-white rounded-xl p-4 mb-4 shadow-md space-y-3" style={{border: `1px solid ${c.sand}`}}>
-                <h3 className="font-semibold" style={{color: c.wood}}>{currentDay.name} Activities</h3>
-                <input placeholder="Focus of the Day (e.g., What are dinosaurs?)" value={currentDay.activities.focusOfDay || ''} onChange={e => updDay(currentDayIndex, 'focusOfDay', e.target.value)} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
-                <input placeholder="Question of the Day (e.g., What do you think dinosaurs ate?)" value={currentDay.activities.questionOfDay || ''} onChange={e => updDay(currentDayIndex, 'questionOfDay', e.target.value)} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
-                {languageSetting !== 'none' && (
-                  <div className="flex items-center gap-2">
-                    <Globe className="w-4 h-4 flex-shrink-0" style={{color: c.terra}} />
-                    <input placeholder={`${getLanguageLabel()} Word (e.g., Papillon (pah-pee-YON) = Butterfly)`} value={currentDay.activities.vocabWord || ''} onChange={e => updDay(currentDayIndex, 'vocabWord', e.target.value)} className="flex-1 px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
-                  </div>
-                )}
-                <textarea placeholder="Circle Time Script" value={currentDay.activities.circleTime || ''} onChange={e => updDay(currentDayIndex, 'circleTime', e.target.value)} className="w-full px-3 py-2 rounded-lg border h-24" style={{borderColor: c.sand}} />
-                <div className="grid grid-cols-2 gap-2">
-                  <input placeholder="Song Title" value={currentDay.activities.songOfDay.title} onChange={e => updSong(currentDayIndex, 'title', e.target.value)} className="px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
-                  <input placeholder="Song Link" value={currentDay.activities.songOfDay.link} onChange={e => updSong(currentDayIndex, 'link', e.target.value)} className="px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium" style={{color: c.wood}}>Morning Activities</label>
-                    <button onClick={() => addMorn(currentDayIndex)} className="text-sm" style={{color: c.terra}}>+ Add</button>
-                  </div>
-                  {currentDay.activities.morningActivities.map((a, i) => (
-                    <div key={i} className="flex gap-2 mb-2">
-                      <input value={a} onChange={e => updMorn(currentDayIndex, i, e.target.value)} className="flex-1 px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} placeholder={`Activity ${i + 1}`} />
-                      {currentDay.activities.morningActivities.length > 1 && <button onClick={() => remMorn(currentDayIndex, i)} className="p-2"><X className="w-4 h-4" style={{color: c.terra}} /></button>}
-                    </div>
-                  ))}
-                </div>
-                <input placeholder="Lunch" value={currentDay.activities.lunch} onChange={e => updDay(currentDayIndex, 'lunch', e.target.value)} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium" style={{color: c.wood}}>Afternoon Activities</label>
-                    <button onClick={() => addAftn(currentDayIndex)} className="text-sm" style={{color: c.terra}}>+ Add</button>
-                  </div>
-                  {currentDay.activities.afternoonActivities.map((a, i) => (
-                    <div key={i} className="flex gap-2 mb-2">
-                      <input value={a} onChange={e => updAftn(currentDayIndex, i, e.target.value)} className="flex-1 px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} placeholder={`Activity ${i + 1}`} />
-                      {currentDay.activities.afternoonActivities.length > 1 && <button onClick={() => remAftn(currentDayIndex, i)} className="p-2"><X className="w-4 h-4" style={{color: c.terra}} /></button>}
-                    </div>
+            </div>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex-1 h-px" style={{backgroundColor: c.sand}}></div>
+              <span className="text-sm" style={{color: c.bark}}>or build manually</span>
+              <div className="flex-1 h-px" style={{backgroundColor: c.sand}}></div>
+            </div>
+            <div className="bg-white rounded-xl p-4 mb-4 shadow-md space-y-3" style={{border: `1px solid ${c.sand}`}}>
+              <input placeholder="Theme Name" value={newWeek.theme} onChange={e => updWeek('theme', e.target.value)} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
+              <div className="grid grid-cols-2 gap-2">
+                <select value={newWeek.season} onChange={e => updWeek('season', e.target.value)} className="px-3 py-2 rounded-lg border" style={{borderColor: c.sand}}>
+                  <option value="">Season</option>
+                  {['Any', 'Spring', 'Summer', 'Fall', 'Winter', 'Spring/Summer', 'Fall/Winter'].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <input placeholder="Focus Area" value={newWeek.focus} onChange={e => updWeek('focus', e.target.value)} className="px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-2" style={{color: c.wood}}>Days to Include</label>
+                <div className="flex gap-1">
+                  {['M','T','W','T','F','S','S'].map((d, i) => (
+                    <button key={i} onClick={() => togDay(i)} className="w-9 h-9 rounded-full text-sm font-medium" style={{backgroundColor: newWeek.daysToInclude[i] ? c.terra : c.sand, color: newWeek.daysToInclude[i] ? 'white' : c.wood}}>{d}</button>
                   ))}
                 </div>
               </div>
-            </>
-          )}
-          <button onClick={saveCustomWeek} disabled={!newWeek.theme || !newWeek.season || !newWeek.focus} className="w-full py-3 rounded-xl font-semibold disabled:opacity-50" style={{backgroundColor: c.terra, color: 'white'}}>Save Custom Week</button>
-        </div>
+            </div>
+            {activeDays.length > 0 && (
+              <>
+                <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+                  {activeDays.map((d, i) => (
+                    <button key={i} onClick={() => setDayIdx(i)} className="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap" style={{backgroundColor: dayIdx === i ? c.terra : c.sand, color: dayIdx === i ? 'white' : c.wood}}>{d.name}</button>
+                  ))}
+                </div>
+                <div className="bg-white rounded-xl p-4 mb-4 shadow-md space-y-3" style={{border: `1px solid ${c.sand}`}}>
+                  <h3 className="font-semibold" style={{color: c.wood}}>{currentDay.name} Activities</h3>
+                  <input placeholder="Focus of the Day" value={currentDay.activities.focusOfDay || ''} onChange={e => updDay(currentDayIndex, 'focusOfDay', e.target.value)} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
+                  <input placeholder="Question of the Day" value={currentDay.activities.questionOfDay || ''} onChange={e => updDay(currentDayIndex, 'questionOfDay', e.target.value)} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
+                  {languageSetting !== 'none' && (
+                    <div className="flex items-center gap-2"><Globe className="w-4 h-4 flex-shrink-0" style={{color: c.terra}} /><input placeholder={`${getLanguageLabel()} Word`} value={currentDay.activities.vocabWord || ''} onChange={e => updDay(currentDayIndex, 'vocabWord', e.target.value)} className="flex-1 px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
+                  )}
+                  <textarea placeholder="Circle Time Script" value={currentDay.activities.circleTime || ''} onChange={e => updDay(currentDayIndex, 'circleTime', e.target.value)} className="w-full px-3 py-2 rounded-lg border h-24" style={{borderColor: c.sand}} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input placeholder="Song Title" value={currentDay.activities.songOfDay.title} onChange={e => updSong(currentDayIndex, 'title', e.target.value)} className="px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
+                    <input placeholder="Song Link" value={currentDay.activities.songOfDay.link} onChange={e => updSong(currentDayIndex, 'link', e.target.value)} className="px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2"><label className="text-sm font-medium" style={{color: c.wood}}>Morning Activities</label><button onClick={() => addMorn(currentDayIndex)} className="text-sm" style={{color: c.terra}}>+ Add</button></div>
+                    {currentDay.activities.morningActivities.map((a, i) => (<div key={i} className="flex gap-2 mb-2"><input value={a} onChange={e => updMorn(currentDayIndex, i, e.target.value)} className="flex-1 px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} placeholder={`Activity ${i + 1}`} />{currentDay.activities.morningActivities.length > 1 && <button onClick={() => remMorn(currentDayIndex, i)} className="p-2"><X className="w-4 h-4" style={{color: c.terra}} /></button>}</div>))}
+                  </div>
+                  <input placeholder="Lunch" value={currentDay.activities.lunch} onChange={e => updDay(currentDayIndex, 'lunch', e.target.value)} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
+                  <div>
+                    <div className="flex items-center justify-between mb-2"><label className="text-sm font-medium" style={{color: c.wood}}>Afternoon Activities</label><button onClick={() => addAftn(currentDayIndex)} className="text-sm" style={{color: c.terra}}>+ Add</button></div>
+                    {currentDay.activities.afternoonActivities.map((a, i) => (<div key={i} className="flex gap-2 mb-2"><input value={a} onChange={e => updAftn(currentDayIndex, i, e.target.value)} className="flex-1 px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} placeholder={`Activity ${i + 1}`} />{currentDay.activities.afternoonActivities.length > 1 && <button onClick={() => remAftn(currentDayIndex, i)} className="p-2"><X className="w-4 h-4" style={{color: c.terra}} /></button>}</div>))}
+                  </div>
+                </div>
+              </>
+            )}
+            <button onClick={saveCustomWeek} disabled={!newWeek.theme || !newWeek.season || !newWeek.focus} className="w-full py-3 rounded-xl font-semibold disabled:opacity-50" style={{backgroundColor: c.terra, color: 'white'}}>Save Custom Week</button>
+          </div>
+        ) : (
+          <div className="p-4 pb-24">
+            <div className="flex items-center gap-3 mb-4">
+              <button onClick={() => setView('weeklyThemes')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+              <h2 className="text-xl font-bold" style={{color: c.wood}}>Create Custom Week</h2>
+            </div>
+            <div className="text-center py-12">
+              <Lock className="w-16 h-16 mx-auto mb-4" style={{color: c.sand}} />
+              <h3 className="text-lg font-bold mb-2" style={{color: c.wood}}>Platinum Feature</h3>
+              <p className="text-sm mb-6" style={{color: c.bark}}>The AI curriculum generator and custom week creator are available with a Platinum subscription.</p>
+              <button onClick={() => setView('pricing')} className="px-6 py-3 rounded-xl font-semibold text-white" style={{backgroundColor: c.terra}}>Upgrade to Platinum</button>
+            </div>
+          </div>
+        )
       )}
 
       {/* SETTINGS */}
@@ -1232,46 +1222,66 @@ Return ONLY JSON for this single day:
             <h2 className="text-xl font-bold" style={{color: c.wood}}>Settings</h2>
           </div>
           
+          {/* Subscription Info */}
           <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
             <div className="flex items-center gap-2 mb-4">
-              <Globe className="w-5 h-5" style={{color: c.terra}} />
-              <h3 className="font-semibold" style={{color: c.wood}}>Language Learning</h3>
+              <CreditCard className="w-5 h-5" style={{color: c.terra}} />
+              <h3 className="font-semibold" style={{color: c.wood}}>Subscription</h3>
             </div>
-            <p className="text-sm mb-4" style={{color: c.bark}}>Choose which language vocabulary to display in daily lesson plans, or turn off to hide this section.</p>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{backgroundColor: hasPlatinum() ? c.terra : hasGold() ? '#fbbf24' : c.sand}}>
+                {hasPlatinum() ? <Crown className="w-5 h-5 text-white" /> : hasGold() ? <Star className="w-5 h-5 text-white" /> : <Lock className="w-5 h-5" style={{color: c.wood}} />}
+              </div>
+              <div>
+                <p className="font-semibold" style={{color: c.wood}}>
+                  {hasPlatinum() ? 'Platinum' : hasGold() ? 'Gold' : 'No Active Plan'}
+                  {subscription.isAgency ? ' (Agency)' : ''}
+                </p>
+                <p className="text-xs" style={{color: c.bark}}>
+                  {subscription.status === 'active' ? 'Active' : subscription.status === 'past_due' ? 'Payment past due' : subscription.status === 'trialing' ? 'Trial' : 'Inactive'}
+                </p>
+              </div>
+            </div>
             <div className="space-y-2">
-              {[
-                { value: 'none', label: 'None', desc: 'Hide language section' },
-                { value: 'french', label: 'French', desc: 'Display French vocabulary' },
-                { value: 'spanish', label: 'Spanish', desc: 'Display Spanish vocabulary' },
-                { value: 'custom', label: 'Custom', desc: 'Use your own language name' }
-              ].map(opt => (
+              {hasGold() && !subscription.isAgency && (
+                <button onClick={openCustomerPortal} className="w-full py-2 rounded-lg font-semibold flex items-center justify-center gap-2" style={{backgroundColor: c.sand, color: c.wood}}>
+                  <CreditCard className="w-4 h-4" />Manage Billing
+                </button>
+              )}
+              {hasGold() && !hasPlatinum() && (
+                <button onClick={() => setView('pricing')} className="w-full py-2 rounded-lg font-semibold flex items-center justify-center gap-2" style={{backgroundColor: c.terra, color: 'white'}}>
+                  <Crown className="w-4 h-4" />Upgrade to Platinum
+                </button>
+              )}
+              {!hasGold() && (
+                <button onClick={() => setView('pricing')} className="w-full py-2 rounded-lg font-semibold" style={{backgroundColor: c.terra, color: 'white'}}>Choose a Plan</button>
+              )}
+            </div>
+          </div>
+
+          {/* Language Settings */}
+          <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
+            <div className="flex items-center gap-2 mb-4"><Globe className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Language Learning</h3></div>
+            <p className="text-sm mb-4" style={{color: c.bark}}>Choose which language vocabulary to display in daily lesson plans.</p>
+            <div className="space-y-2">
+              {[{ value: 'none', label: 'None', desc: 'Hide language section' }, { value: 'french', label: 'French', desc: 'Display French vocabulary' }, { value: 'spanish', label: 'Spanish', desc: 'Display Spanish vocabulary' }, { value: 'custom', label: 'Custom', desc: 'Use your own language name' }].map(opt => (
                 <button key={opt.value} onClick={() => saveLanguageSettings(opt.value, opt.value === 'custom' ? customLanguageName : '')} className="w-full p-3 rounded-lg text-left flex items-center justify-between" style={{backgroundColor: languageSetting === opt.value ? c.terra : c.cream, color: languageSetting === opt.value ? 'white' : c.wood}}>
-                  <div>
-                    <p className="font-medium">{opt.label}</p>
-                    <p className="text-xs opacity-80">{opt.desc}</p>
-                  </div>
+                  <div><p className="font-medium">{opt.label}</p><p className="text-xs opacity-80">{opt.desc}</p></div>
                   {languageSetting === opt.value && <Star className="w-5 h-5" />}
                 </button>
               ))}
             </div>
             {languageSetting === 'custom' && (
-              <div className="mt-4">
-                <label className="text-sm font-medium block mb-2" style={{color: c.wood}}>Custom Language Name</label>
-                <input placeholder="e.g., ASL, Mandarin, German..." value={customLanguageName} onChange={e => saveLanguageSettings('custom', e.target.value)} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} />
-              </div>
+              <div className="mt-4"><label className="text-sm font-medium block mb-2" style={{color: c.wood}}>Custom Language Name</label><input placeholder="e.g., ASL, Mandarin, German..." value={customLanguageName} onChange={e => saveLanguageSettings('custom', e.target.value)} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
             )}
           </div>
           
+          {/* Account */}
           <div className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
-            <div className="flex items-center gap-2 mb-4">
-              <User className="w-5 h-5" style={{color: c.terra}} />
-              <h3 className="font-semibold" style={{color: c.wood}}>Account</h3>
-            </div>
+            <div className="flex items-center gap-2 mb-4"><User className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Account</h3></div>
             <div className="space-y-2">
               <p className="text-sm" style={{color: c.bark}}>Signed in as: <strong style={{color: c.wood}}>{currentUser?.email}</strong></p>
-              <button onClick={handleLogout} className="w-full py-2 rounded-lg font-semibold flex items-center justify-center gap-2" style={{backgroundColor: c.sand, color: c.wood}}>
-                <LogOut className="w-4 h-4" />Sign Out
-              </button>
+              <button onClick={handleLogout} className="w-full py-2 rounded-lg font-semibold flex items-center justify-center gap-2" style={{backgroundColor: c.sand, color: c.wood}}><LogOut className="w-4 h-4" />Sign Out</button>
             </div>
           </div>
         </div>
