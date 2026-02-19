@@ -1,6 +1,6 @@
 {
   "name": "the-formula",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "The Formula - Nanny Curriculum & Management App",
   "type": "module",
   "scripts": {
@@ -12,7 +12,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "lucide-react": "^0.263.1",
-    "@neondatabase/serverless": "^0.10.4"
+    "@neondatabase/serverless": "^0.10.4",
+    "stripe": "^14.14.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
