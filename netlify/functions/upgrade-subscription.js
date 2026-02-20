@@ -73,6 +73,18 @@ export async function handler(event) {
       },
     });
 
+    // Immediately invoice the prorated amount so it charges now
+    try {
+      const invoice = await stripe.invoices.create({
+        customer: rows[0].stripe_customer_id,
+        auto_advance: true,
+      });
+      await stripe.invoices.pay(invoice.id);
+    } catch (invoiceErr) {
+      // If there's nothing to invoice (e.g., $0 proration), that's fine
+      console.log('Invoice note:', invoiceErr.message);
+    }
+
     // Update our database immediately
     const periodEnd = new Date(updatedSubscription.current_period_end * 1000);
     await sql`
