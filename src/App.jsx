@@ -79,6 +79,24 @@ const App = () => {
 
   const startCheckout = async (plan) => {
     try {
+      // If user already has an active subscription, upgrade instead of new checkout
+      if (isActive() && subscription.tier !== 'none') {
+        const resp = await fetch('/.netlify/functions/upgrade-subscription', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUser.id, newPlan: plan }),
+        });
+        const data = await resp.json();
+        if (data.success) {
+          setCheckoutMessage({ type: 'success', text: data.message });
+          setSubscription(prev => ({ ...prev, tier: data.tier }));
+          setView('dashboard');
+        } else {
+          alert('Upgrade failed: ' + (data.error || 'Unknown error'));
+        }
+        return;
+      }
+      // Otherwise, create a new checkout session
       const resp = await fetch('/.netlify/functions/create-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -518,7 +536,9 @@ const App = () => {
               <li key={i} className="flex items-start gap-2 text-sm" style={{color: c.wood}}><Check className="w-4 h-4 mt-0.5 flex-shrink-0" style={{color: '#059669'}} />{f}</li>
             ))}
           </ul>
-          <button onClick={() => startCheckout(billingCycle === 'monthly' ? 'gold_monthly' : 'gold_yearly')} className="w-full py-3 rounded-xl font-semibold text-white" style={{backgroundColor: '#fbbf24'}}>Get Gold</button>
+          <button onClick={() => !hasGold() && startCheckout(billingCycle === 'monthly' ? 'gold_monthly' : 'gold_yearly')} disabled={hasGold()} className="w-full py-3 rounded-xl font-semibold text-white disabled:opacity-60" style={{backgroundColor: '#fbbf24'}}>
+            {hasGold() ? '✓ Current Plan' : 'Get Gold'}
+          </button>
         </div>
 
         {/* PLATINUM */}
@@ -539,7 +559,12 @@ const App = () => {
               <li key={i} className="flex items-start gap-2 text-sm" style={{color: c.wood}}><Check className="w-4 h-4 mt-0.5 flex-shrink-0" style={{color: c.terra}} />{f}</li>
             ))}
           </ul>
-          <button onClick={() => startCheckout(billingCycle === 'monthly' ? 'platinum_monthly' : 'platinum_yearly')} className="w-full py-3 rounded-xl font-semibold text-white" style={{backgroundColor: c.terra}}>Get Platinum</button>
+          <button onClick={() => !hasPlatinum() && startCheckout(billingCycle === 'monthly' ? 'platinum_monthly' : 'platinum_yearly')} disabled={hasPlatinum()} className="w-full py-3 rounded-xl font-semibold text-white disabled:opacity-60" style={{backgroundColor: c.terra}}>
+            {hasPlatinum() ? '✓ Current Plan' : hasGold() ? 'Upgrade to Platinum (prorated)' : 'Get Platinum'}
+          </button>
+          {hasGold() && !hasPlatinum() && (
+            <p className="text-xs text-center mt-2" style={{color: c.bark}}>You'll only pay the difference for the rest of this billing period</p>
+          )}
         </div>
 
         {/* Agency note */}
