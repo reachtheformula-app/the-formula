@@ -16,7 +16,6 @@ export async function handler(event) {
 
   let stripeEvent;
 
-  // Verify webhook signature if signing secret is set
   if (process.env.STRIPE_WEBHOOK_SECRET) {
     const sig = event.headers['stripe-signature'];
     try {
@@ -26,7 +25,6 @@ export async function handler(event) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid signature' }) };
     }
   } else {
-    // In test mode without webhook secret, parse directly
     stripeEvent = JSON.parse(event.body);
   }
 
@@ -40,7 +38,6 @@ export async function handler(event) {
         const subscriptionId = session.subscription;
 
         if (subscriptionId) {
-          // Fetch the full subscription to get tier info
           const subscription = await stripe.subscriptions.retrieve(subscriptionId);
           const tier = subscription.metadata.tier || 'gold';
           const periodEnd = new Date(subscription.current_period_end * 1000);
@@ -63,11 +60,24 @@ export async function handler(event) {
         const subscription = stripeEvent.data.object;
         const customerId = subscription.customer;
         const tier = subscription.metadata.tier || 'gold';
-        const status = subscription.status === 'active' ? 'active' :
-                       subscription.status === 'past_due' ? 'past_due' :
-                       subscription.status === 'canceled' ? 'canceled' :
-                       subscription.status === 'trialing' ? 'trialing' : 'inactive';
         const periodEnd = new Date(subscription.current_period_end * 1000);
+
+        // If subscription is active but set to cancel at period end,
+        // keep the user active until their paid period runs out
+        let status;
+        if (subscription.status === 'active') {
+          status = 'active';
+        } else if (subscription.status === 'past_due') {
+          status = 'past_due';
+        } else if (subscription.status === 'canceled') {
+          status = 'canceled';
+        } else if (subscription.status === 'trialing') {
+          status = 'trialing';
+        } else {
+          status = 'inactive';
+        }
+
+        const cancelAtPeriodEnd = subscription.cancel_at_period_end || false;
 
         await sql`
           UPDATE subscriptions
@@ -77,7 +87,7 @@ export async function handler(event) {
               updated_at = NOW()
           WHERE stripe_customer_id = ${customerId}
         `;
-        console.log(`Subscription updated: customer=${customerId}, tier=${tier}, status=${status}`);
+        console.log(`Subscription updated: customer=${customerId}, tier=${tier}, status=${status}, canceling=${cancelAtPeriodEnd}`);
         break;
       }
 
@@ -85,7 +95,6 @@ export async function handler(event) {
         const subscription = stripeEvent.data.object;
         const customerId = subscription.customer;
 
-        // Check if this is an agency user — they keep agency_gold
         const user = await sql`SELECT is_agency FROM subscriptions WHERE stripe_customer_id = ${customerId}`;
         const newTier = user[0]?.is_agency ? 'agency_gold' : 'none';
         const newStatus = user[0]?.is_agency ? 'active' : 'inactive';
@@ -99,7 +108,7 @@ export async function handler(event) {
               updated_at = NOW()
           WHERE stripe_customer_id = ${customerId}
         `;
-        console.log(`Subscription deleted: customer=${customerId}, reverted to ${newTier}`);
+        console.log(`Subscription ended: customer=${customerId}, reverted to ${newTier}`);
         break;
       }
 
