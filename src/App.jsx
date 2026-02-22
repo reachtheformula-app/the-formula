@@ -1222,8 +1222,13 @@ Write in The Formula voice. Only describe what was actually reported in the less
             <h2 className="text-xl font-bold" style={{color: c.wood}}>Daily Letter</h2>
           </div>
           <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
-            <label className="text-sm font-medium block mb-1" style={{color: c.wood}}>How was the day?</label>
-            <p className="text-xs mb-2" style={{color: c.bark}}>Optional — jot down what you did, funny moments, how the kids reacted. The more detail, the better the letter.</p>
+            <label className="text-sm font-medium block mb-2" style={{color: c.wood}}>How was the day?</label>
+            <div className="space-y-1 mb-3">
+              <p className="text-xs" style={{color: c.bark}}>✏️ Walk us through the day — what did you do first, next, and so on?</p>
+              <p className="text-xs" style={{color: c.bark}}>⭐ Any highlights? Funny moments, new skills, something a child said?</p>
+              <p className="text-xs" style={{color: c.bark}}>🔀 Anything off-script? Schedule changes, a boo-boo, a mood shift?</p>
+              <p className="text-xs" style={{color: c.bark}}>📋 Quick parent updates: meals, naps, bathroom, etc.</p>
+            </div>
             <textarea value={letterNotes} onChange={e => setLetterNotes(e.target.value)} placeholder='e.g., We started with circle time and talked about healthy foods. "Child" tried broccoli for the first time and made the funniest face! Then we did a sorting activity with plastic fruits...' className="w-full px-3 py-2 rounded-lg border h-28 text-sm" style={{borderColor: c.sand}} />
           </div>
           <div className="flex gap-2 mb-4">
