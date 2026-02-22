@@ -181,9 +181,11 @@ const App = () => {
     netlifyIdentity.on('login', async (user) => {
       const mapped = mapUser(user);
       setCurrentUser(mapped);
-      setIsAuthenticated(true);
+      setSubscription(prev => ({ ...prev, loading: true }));
+      setSubscriptionChecked(false);
       await checkSubscription(mapped.id);
       load(mapped);
+      setIsAuthenticated(true);
       netlifyIdentity.close();
     });
 
