@@ -48,6 +48,18 @@ const App = () => {
   const [customLanguageName, setCustomLanguageName] = useState('');
   const [isGeneratingWeek, setIsGeneratingWeek] = useState(false);
   const [weekTopic, setWeekTopic] = useState('');
+  const [viewOpacity, setViewOpacity] = useState(1);
+
+  // Smooth view transition helper
+  const navigateTo = (newView) => {
+    if (newView === view) return;
+    setViewOpacity(0);
+    setTimeout(() => {
+      setView(newView);
+      setViewOpacity(1);
+      window.scrollTo(0, 0);
+    }, 150);
+  };
   const [weekAgeGroup, setWeekAgeGroup] = useState('2-3');
   const [billingCycle, setBillingCycle] = useState('monthly');
   const fileInputRef = useRef(null);
@@ -68,17 +80,15 @@ const App = () => {
   const hasPlatinum = () => isActive() && hasTier('platinum');
 
   const checkSubscription = async (userId) => {
-    console.log('[CHECK-SUB] starting for userId:', userId);
     setSubscription(prev => ({ ...prev, loading: true }));
     try {
       const resp = await fetch(`/.netlify/functions/check-subscription?userId=${userId}`);
       const data = await resp.json();
-      console.log('[CHECK-SUB] response:', JSON.stringify(data));
       setSubscription({ tier: data.tier || 'none', status: data.status || 'inactive', isAgency: data.isAgency || false, loading: false });
       setSubscriptionChecked(true);
       return data;
     } catch (err) {
-      console.error('[CHECK-SUB] error:', err);
+      console.error('Failed to check subscription:', err);
       setSubscription(prev => ({ ...prev, loading: false }));
       setSubscriptionChecked(true);
       return null;
@@ -200,7 +210,6 @@ const App = () => {
     netlifyIdentity.on('init', (user) => {
       if (user) {
         const mapped = mapUser(user);
-        console.log('[INIT] mapped user:', mapped?.id, mapped?.email);
         if (mapped) {
           setCurrentUser(mapped);
           setIsAuthenticated(true);
@@ -216,7 +225,6 @@ const App = () => {
 
     netlifyIdentity.on('login', (user) => {
       const mapped = mapUser(user);
-      console.log('[LOGIN] mapped user:', mapped?.id, mapped?.email);
       if (mapped) {
         setCurrentUser(mapped);
         setSubscription({ tier: 'none', status: 'inactive', isAgency: false, loading: true });
@@ -229,7 +237,6 @@ const App = () => {
     });
 
     netlifyIdentity.on('logout', () => {
-      console.log('[LOGOUT] fired');
       setCurrentUser(null);
       setIsAuthenticated(false);
       setSubscriptionChecked(false);
@@ -262,7 +269,11 @@ const App = () => {
 
   const handleLogout = () => {
     const netlifyIdentity = window.netlifyIdentity;
-    if (netlifyIdentity) netlifyIdentity.logout();
+    if (netlifyIdentity) {
+      netlifyIdentity.logout();
+      // Reload to give the identity widget a clean state for next login
+      setTimeout(() => window.location.reload(), 300);
+    }
   };
 
   const openLogin = () => {
@@ -370,7 +381,7 @@ const App = () => {
   const delLog = (id) => { if (!window.confirm('Delete this activity log?')) return; const n = logs.filter(l => l.id !== id); setLogs(n); save('fl', n); };
   const saveMilestone = () => { if (!milestoneForm.title) return; const n = [{ ...milestoneForm, id: Date.now(), date: new Date().toISOString() }, ...milestones]; setMilestones(n); save('fm', n); setMilestoneForm({ title: '', childId: '', notes: '' }); setShowMilestoneForm(false); };
   const delMilestone = (id) => { if (!window.confirm('Delete this milestone?')) return; const n = milestones.filter(m => m.id !== id); setMilestones(n); save('fm', n); };
-  const selectWeek = (w) => { setSelectedWeek(w); setSelectedDay(0); setIsEditMode(false); save('fs', w.id); setView('dailyPlan'); };
+  const selectWeek = (w) => { setSelectedWeek(w); setSelectedDay(0); setIsEditMode(false); save('fs', w.id); navigateTo('dailyPlan'); };
   
   const saveCustomWeek = async () => {
     if (!newWeek.theme || !newWeek.season || !newWeek.focus) return;
@@ -387,7 +398,7 @@ const App = () => {
       const n = [...customWeeks, w]; setCustomWeeks(n); save('fw', n);
     }
     setNewWeek({ theme: '', season: '', focus: '', daysToInclude: [1,1,1,1,1,0,0], days: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => ({ name: x, activities: {...emptyDay} })) });
-    setDayIdx(0); setView('weeklyThemes');
+    setDayIdx(0); navigateTo('weeklyThemes');
   };
   const delCustomWeek = async (id) => { if (!window.confirm('Delete this custom week? This cannot be undone.')) return; setCustomWeeks(prev => prev.filter(w => w.id !== id)); try { await fetch(`/.netlify/functions/user-weeks?id=${id}&userId=${currentUser.id}`, { method: 'DELETE' }); } catch (err) { console.error('Failed to delete week from database:', err); } };
 
@@ -488,8 +499,6 @@ const App = () => {
   // ============ RENDER ============
 
   // Loading screen
-  console.log('[RENDER] authReady:', authReady, 'isAuth:', isAuthenticated, 'sub.loading:', subscription.loading, 'subChecked:', subscriptionChecked, 'tier:', subscription.tier, 'status:', subscription.status);
-
   if (!authReady) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
@@ -639,6 +648,16 @@ const App = () => {
     );
   }
 
+  // Bottom nav tab mapping
+  const getActiveTab = () => {
+    if (['dashboard', 'children', 'milestones'].includes(view)) return 'home';
+    if (['weeklyThemes', 'dailyPlan', 'customWeek'].includes(view)) return 'curriculum';
+    if (view === 'activityLog') return 'log';
+    if (view === 'writeLetter') return 'letter';
+    if (view === 'settings') return 'settings';
+    return 'home';
+  };
+
   // MAIN APP RENDER
   return (
     <div className="min-h-screen" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
@@ -651,6 +670,9 @@ const App = () => {
           <button onClick={() => setCheckoutMessage(null)}><X className="w-4 h-4 text-gray-400" /></button>
         </div>
       )}
+
+      {/* Transition wrapper */}
+      <div style={{opacity: viewOpacity, transition: 'opacity 0.15s ease-in-out'}}>
 
       {/* DASHBOARD */}
       {view === 'dashboard' && (
@@ -683,23 +705,23 @@ const App = () => {
           </div>
           <div className="grid grid-cols-2 gap-4">
             {[['weeklyThemes', c.sand, BookOpen, 'Weekly Themes'], ['dailyPlan', c.terra, Calendar, "Today's Plan"], ['activityLog', c.dune, Edit3, 'Activity Log'], ['writeLetter', c.bark, MessageSquare, 'Write Letter']].map(([v, bg, Icon, label]) => (
-              <button key={v} onClick={() => setView(v)} className="bg-white rounded-2xl p-5 shadow-md hover:shadow-lg transition-all" style={{border: `2px solid ${c.sand}`}}>
+              <button key={v} onClick={() => navigateTo(v)} className="bg-white rounded-2xl p-5 shadow-md hover:shadow-lg transition-all" style={{border: `2px solid ${c.sand}`}}>
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-3 mx-auto" style={{backgroundColor: bg}}><Icon className="w-6 h-6" style={{color: bg === c.terra || bg === c.bark ? 'white' : c.wood}} /></div>
                 <p className="font-semibold text-sm" style={{color: c.bark}}>{label}</p>
               </button>
             ))}
           </div>
-          <button onClick={() => setView('children')} className="w-full bg-white rounded-2xl p-4 shadow-md flex items-center justify-between" style={{border: `2px solid ${c.sand}`}}>
+          <button onClick={() => navigateTo('children')} className="w-full bg-white rounded-2xl p-4 shadow-md flex items-center justify-between" style={{border: `2px solid ${c.sand}`}}>
             <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{backgroundColor: c.dune}}><Users className="w-5 h-5" style={{color: c.wood}} /></div><span className="font-semibold" style={{color: c.bark}}>Manage Children</span></div>
             <ChevronRight className="w-5 h-5" style={{color: c.bark}} />
           </button>
-          <button onClick={() => setView('milestones')} className="w-full bg-white rounded-2xl p-4 shadow-md flex items-center justify-between" style={{border: `2px solid ${c.sand}`}}>
+          <button onClick={() => navigateTo('milestones')} className="w-full bg-white rounded-2xl p-4 shadow-md flex items-center justify-between" style={{border: `2px solid ${c.sand}`}}>
             <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{backgroundColor: c.terra}}><TrendingUp className="w-5 h-5 text-white" /></div><span className="font-semibold" style={{color: c.bark}}>Milestones</span></div>
             <ChevronRight className="w-5 h-5" style={{color: c.bark}} />
           </button>
           {/* Upgrade banner for Gold users */}
           {hasGold() && !hasPlatinum() && (
-            <button onClick={() => setView('pricing')} className="w-full rounded-2xl p-4 shadow-md flex items-center justify-between" style={{backgroundColor: c.terra, border: `2px solid ${c.wood}`}}>
+            <button onClick={() => navigateTo('pricing')} className="w-full rounded-2xl p-4 shadow-md flex items-center justify-between" style={{backgroundColor: c.terra, border: `2px solid ${c.wood}`}}>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white bg-opacity-20"><Crown className="w-5 h-5 text-white" /></div>
                 <div className="text-left">
@@ -710,7 +732,7 @@ const App = () => {
               <ChevronRight className="w-5 h-5 text-white" />
             </button>
           )}
-          <button onClick={() => setView('settings')} className="w-full bg-white rounded-2xl p-4 shadow-md flex items-center justify-between" style={{border: `2px solid ${c.sand}`}}>
+          <button onClick={() => navigateTo('settings')} className="w-full bg-white rounded-2xl p-4 shadow-md flex items-center justify-between" style={{border: `2px solid ${c.sand}`}}>
             <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{backgroundColor: c.bark}}><Settings className="w-5 h-5 text-white" /></div><span className="font-semibold" style={{color: c.bark}}>Settings</span></div>
             <ChevronRight className="w-5 h-5" style={{color: c.bark}} />
           </button>
@@ -722,7 +744,7 @@ const App = () => {
         <div>
           <div className="p-4">
             <div className="flex items-center gap-3 mb-4">
-              <button onClick={() => setView(hasGold() ? 'dashboard' : 'dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+              <button onClick={() => navigateTo(hasGold() ? 'dashboard' : 'dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
               <h2 className="text-xl font-bold" style={{color: c.wood}}>{hasGold() ? 'Upgrade Your Plan' : 'Choose Your Plan'}</h2>
             </div>
           </div>
@@ -734,7 +756,7 @@ const App = () => {
       {view === 'weeklyThemes' && (
         <div className="p-4 pb-24">
           <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => setView('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+            <button onClick={() => navigateTo('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
             <h2 className="text-xl font-bold" style={{color: c.wood}}>Weekly Themes</h2>
           </div>
           <div className="bg-white rounded-xl p-3 mb-4 shadow-md space-y-2" style={{border: `1px solid ${c.sand}`}}>
@@ -769,7 +791,7 @@ const App = () => {
           
           {/* Create Custom Week — Platinum only */}
           {hasPlatinum() ? (
-            <button onClick={() => setView('customWeek')} className="w-full bg-white rounded-xl p-4 mb-4 shadow-md flex items-center gap-3" style={{border: `2px dashed ${c.terra}`}}>
+            <button onClick={() => navigateTo('customWeek')} className="w-full bg-white rounded-xl p-4 mb-4 shadow-md flex items-center gap-3" style={{border: `2px dashed ${c.terra}`}}>
               <Plus className="w-5 h-5" style={{color: c.terra}} /><span className="font-semibold" style={{color: c.terra}}>Create Custom Week</span>
             </button>
           ) : (
@@ -779,7 +801,7 @@ const App = () => {
                 <span className="font-semibold text-sm" style={{color: c.bark}}>Create Custom Week</span>
                 <p className="text-xs" style={{color: c.bark}}>Upgrade to Platinum to create custom curricula</p>
               </div>
-              <button onClick={() => setView('pricing')} className="px-3 py-1 rounded-full text-xs font-medium text-white" style={{backgroundColor: c.terra}}>Upgrade</button>
+              <button onClick={() => navigateTo('pricing')} className="px-3 py-1 rounded-full text-xs font-medium text-white" style={{backgroundColor: c.terra}}>Upgrade</button>
             </div>
           )}
 
@@ -812,7 +834,7 @@ const App = () => {
       {view === 'dailyPlan' && (
         <div className="p-4 pb-24">
           <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => { setView('dashboard'); setIsEditMode(false); }} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+            <button onClick={() => { navigateTo('dashboard'); setIsEditMode(false); }} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
             <div className="flex-1">
               {isEditMode ? (
                 <input value={currentWeek.theme} onChange={e => editWeekField('theme', e.target.value)} className="text-xl font-bold w-full px-2 py-1 rounded-lg border" style={{color: c.wood, borderColor: c.terra}} />
@@ -1005,7 +1027,7 @@ const App = () => {
         <div className="p-4 pb-24">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <button onClick={() => setView('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+              <button onClick={() => navigateTo('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
               <h2 className="text-xl font-bold" style={{color: c.wood}}>Activity Log</h2>
             </div>
             <button onClick={() => { setEditingLog(null); setLogForm({ activity: '', notes: '', childId: '', photos: [] }); setShowLogForm(true); }} className="p-2 rounded-full" style={{backgroundColor: c.terra}}><Plus className="w-5 h-5 text-white" /></button>
@@ -1068,7 +1090,7 @@ const App = () => {
       {view === 'writeLetter' && (
         <div className="p-4 pb-24">
           <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => setView('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+            <button onClick={() => navigateTo('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
             <h2 className="text-xl font-bold" style={{color: c.wood}}>Daily Letter</h2>
           </div>
           <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
@@ -1106,7 +1128,7 @@ const App = () => {
         <div className="p-4 pb-24">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <button onClick={() => setView('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+              <button onClick={() => navigateTo('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
               <h2 className="text-xl font-bold" style={{color: c.wood}}>Children</h2>
             </div>
             <button onClick={() => { setEditingChild(null); setChildForm({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '' }); setShowChildForm(true); }} className="p-2 rounded-full" style={{backgroundColor: c.terra}}><Plus className="w-5 h-5 text-white" /></button>
@@ -1162,7 +1184,7 @@ const App = () => {
         <div className="p-4 pb-24">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <button onClick={() => setView('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+              <button onClick={() => navigateTo('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
               <h2 className="text-xl font-bold" style={{color: c.wood}}>Milestones</h2>
             </div>
             <button onClick={() => setShowMilestoneForm(true)} className="p-2 rounded-full" style={{backgroundColor: c.terra}}><Plus className="w-5 h-5 text-white" /></button>
@@ -1211,7 +1233,7 @@ const App = () => {
         hasPlatinum() ? (
           <div className="p-4 pb-24">
             <div className="flex items-center gap-3 mb-4">
-              <button onClick={() => setView('weeklyThemes')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+              <button onClick={() => navigateTo('weeklyThemes')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
               <h2 className="text-xl font-bold" style={{color: c.wood}}>Create Custom Week</h2>
             </div>
             <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `2px solid ${c.terra}`}}>
@@ -1288,14 +1310,14 @@ const App = () => {
         ) : (
           <div className="p-4 pb-24">
             <div className="flex items-center gap-3 mb-4">
-              <button onClick={() => setView('weeklyThemes')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+              <button onClick={() => navigateTo('weeklyThemes')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
               <h2 className="text-xl font-bold" style={{color: c.wood}}>Create Custom Week</h2>
             </div>
             <div className="text-center py-12">
               <Lock className="w-16 h-16 mx-auto mb-4" style={{color: c.sand}} />
               <h3 className="text-lg font-bold mb-2" style={{color: c.wood}}>Platinum Feature</h3>
               <p className="text-sm mb-6" style={{color: c.bark}}>The AI curriculum generator and custom week creator are available with a Platinum subscription.</p>
-              <button onClick={() => setView('pricing')} className="px-6 py-3 rounded-xl font-semibold text-white" style={{backgroundColor: c.terra}}>Upgrade to Platinum</button>
+              <button onClick={() => navigateTo('pricing')} className="px-6 py-3 rounded-xl font-semibold text-white" style={{backgroundColor: c.terra}}>Upgrade to Platinum</button>
             </div>
           </div>
         )
@@ -1305,7 +1327,7 @@ const App = () => {
       {view === 'settings' && (
         <div className="p-4 pb-24">
           <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => setView('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
+            <button onClick={() => navigateTo('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
             <h2 className="text-xl font-bold" style={{color: c.wood}}>Settings</h2>
           </div>
           
@@ -1336,12 +1358,12 @@ const App = () => {
                 </button>
               )}
               {hasGold() && !hasPlatinum() && (
-                <button onClick={() => setView('pricing')} className="w-full py-2 rounded-lg font-semibold flex items-center justify-center gap-2" style={{backgroundColor: c.terra, color: 'white'}}>
+                <button onClick={() => navigateTo('pricing')} className="w-full py-2 rounded-lg font-semibold flex items-center justify-center gap-2" style={{backgroundColor: c.terra, color: 'white'}}>
                   <Crown className="w-4 h-4" />Upgrade to Platinum
                 </button>
               )}
               {!hasGold() && (
-                <button onClick={() => setView('pricing')} className="w-full py-2 rounded-lg font-semibold" style={{backgroundColor: c.terra, color: 'white'}}>Choose a Plan</button>
+                <button onClick={() => navigateTo('pricing')} className="w-full py-2 rounded-lg font-semibold" style={{backgroundColor: c.terra, color: 'white'}}>Choose a Plan</button>
               )}
             </div>
           </div>
@@ -1371,6 +1393,35 @@ const App = () => {
               <button onClick={handleLogout} className="w-full py-2 rounded-lg font-semibold flex items-center justify-center gap-2" style={{backgroundColor: c.sand, color: c.wood}}><LogOut className="w-4 h-4" />Sign Out</button>
             </div>
           </div>
+        </div>
+      )}
+
+      </div>{/* end transition wrapper */}
+
+      {/* Bottom Navigation Bar */}
+      {view !== 'pricing' && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white shadow-lg" style={{borderTop: `1px solid ${c.sand}`, zIndex: 50}}>
+          <div className="max-w-lg mx-auto flex justify-around items-center py-2 px-1">
+            {[
+              { tab: 'home', view: 'dashboard', icon: Home, label: 'Home' },
+              { tab: 'curriculum', view: 'weeklyThemes', icon: BookOpen, label: 'Curriculum' },
+              { tab: 'log', view: 'activityLog', icon: Edit3, label: 'Log' },
+              { tab: 'letter', view: 'writeLetter', icon: MessageSquare, label: 'Letter' },
+              { tab: 'settings', view: 'settings', icon: Settings, label: 'Settings' },
+            ].map(({ tab, view: targetView, icon: Icon, label }) => {
+              const isActive = getActiveTab() === tab;
+              return (
+                <button key={tab} onClick={() => navigateTo(targetView)} className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg transition-all" style={{minWidth: '56px'}}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-all" style={{backgroundColor: isActive ? c.terra : 'transparent'}}>
+                    <Icon className="w-4 h-4" style={{color: isActive ? 'white' : c.bark}} />
+                  </div>
+                  <span className="text-xs font-medium" style={{color: isActive ? c.terra : c.bark}}>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {/* Safe area for devices with home indicators */}
+          <div className="h-safe-area" style={{paddingBottom: 'env(safe-area-inset-bottom, 0px)'}} />
         </div>
       )}
     </div>
