@@ -356,13 +356,19 @@ const App = () => {
       })
       .catch(err => console.error('Failed to load activity logs:', err));
 
-    // Load local-only settings (selected week, language)
-    try {
-      const fsData = localStorage.getItem(getStorageKey('fs', u));
-      if (fsData) { const w = [...weeks].find(x => x.id === JSON.parse(fsData)); if (w) setSelectedWeek(w); }
-      const flsData = localStorage.getItem(getStorageKey('fls', u));
-      if (flsData) { const d = JSON.parse(flsData); setLanguageSetting(d.language || 'none'); setCustomLanguageName(d.customName || ''); }
-    } catch (e) { console.error('Load settings error:', e); }
+    // Load settings from DB
+    fetch(`/.netlify/functions/user-data?type=settings&userId=${u.id}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.selected_week_id) {
+          const wId = isNaN(data.selected_week_id) ? data.selected_week_id : parseInt(data.selected_week_id);
+          const w = [...weeks].find(x => x.id === wId);
+          if (w) setSelectedWeek(w);
+        }
+        setLanguageSetting(data.language || 'none');
+        setCustomLanguageName(data.custom_language_name || '');
+      })
+      .catch(err => console.error('Failed to load settings:', err));
   };
 
   // ========== INFANT ROUTINES ==========
@@ -417,7 +423,16 @@ const App = () => {
   const fmtTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const fmtDate = (ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const getLanguageLabel = () => { if (languageSetting === 'none') return null; if (languageSetting === 'french') return 'French'; if (languageSetting === 'spanish') return 'Spanish'; if (languageSetting === 'custom') return customLanguageName || 'Language'; return 'Language'; };
-  const saveLanguageSettings = (lang, customName = '') => { setLanguageSetting(lang); setCustomLanguageName(customName); save('fls', { language: lang, customName }); };
+  
+  const saveSettings = (partial) => {
+    if (!currentUser) return;
+    const body = { language: languageSetting, customLanguageName, selectedWeekId: selectedWeek ? String(selectedWeek.id) : null, ...partial };
+    fetch(`/.netlify/functions/user-data?type=settings&userId=${currentUser.id}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    }).catch(err => console.error('Failed to save settings:', err));
+  };
+
+  const saveLanguageSettings = (lang, customName = '') => { setLanguageSetting(lang); setCustomLanguageName(customName); saveSettings({ language: lang, customLanguageName: customName }); };
   const allSeasons = ['All', ...new Set(weeks.map(w => w.season))];
   const allFocusAreas = ['All', ...new Set(weeks.map(w => w.focus))];
 
@@ -514,7 +529,7 @@ const App = () => {
     try { await fetch(`/.netlify/functions/user-data?type=milestones&userId=${currentUser.id}&id=${id}`, { method: 'DELETE' }); }
     catch (err) { console.error('Failed to delete milestone:', err); }
   };
-  const selectWeek = (w) => { setSelectedWeek(w); setSelectedDay(0); setIsEditMode(false); save('fs', w.id); navigateTo('dailyPlan'); };
+  const selectWeek = (w) => { setSelectedWeek(w); setSelectedDay(0); setIsEditMode(false); navigateTo('dailyPlan'); saveSettings({ selectedWeekId: String(w.id) }); };
   
   const saveCustomWeek = async () => {
     if (!newWeek.theme || !newWeek.season || !newWeek.focus) return;
