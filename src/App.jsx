@@ -1404,7 +1404,7 @@ const App = () => {
           <div className="max-w-lg mx-auto flex justify-around items-center py-2 px-1">
             {[
               { tab: 'home', view: 'dashboard', icon: Home, label: 'Home' },
-              { tab: 'curriculum', view: 'weeklyThemes', icon: BookOpen, label: 'Curriculum' },
+              { tab: 'curriculum', view: 'dailyPlan', icon: BookOpen, label: 'Curriculum' },
               { tab: 'log', view: 'activityLog', icon: Edit3, label: 'Log' },
               { tab: 'letter', view: 'writeLetter', icon: MessageSquare, label: 'Letter' },
               { tab: 'settings', view: 'settings', icon: Settings, label: 'Settings' },
