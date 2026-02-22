@@ -68,15 +68,17 @@ const App = () => {
   const hasPlatinum = () => isActive() && hasTier('platinum');
 
   const checkSubscription = async (userId) => {
+    console.log('[CHECK-SUB] starting for userId:', userId);
     setSubscription(prev => ({ ...prev, loading: true }));
     try {
       const resp = await fetch(`/.netlify/functions/check-subscription?userId=${userId}`);
       const data = await resp.json();
+      console.log('[CHECK-SUB] response:', JSON.stringify(data));
       setSubscription({ tier: data.tier || 'none', status: data.status || 'inactive', isAgency: data.isAgency || false, loading: false });
       setSubscriptionChecked(true);
       return data;
     } catch (err) {
-      console.error('Failed to check subscription:', err);
+      console.error('[CHECK-SUB] error:', err);
       setSubscription(prev => ({ ...prev, loading: false }));
       setSubscriptionChecked(true);
       return null;
@@ -165,6 +167,7 @@ const App = () => {
     };
 
     netlifyIdentity.on('init', (user) => {
+      console.log('[INIT] fired, user:', user ? user.id : 'null');
       if (user) {
         const mapped = mapUser(user);
         setCurrentUser(mapped);
@@ -179,6 +182,7 @@ const App = () => {
     });
 
     netlifyIdentity.on('login', (user) => {
+      console.log('[LOGIN] fired, user:', user ? user.id : 'null');
       const mapped = mapUser(user);
       setCurrentUser(mapped);
       setSubscription({ tier: 'none', status: 'inactive', isAgency: false, loading: true });
@@ -190,6 +194,7 @@ const App = () => {
     });
 
     netlifyIdentity.on('logout', () => {
+      console.log('[LOGOUT] fired');
       setCurrentUser(null);
       setIsAuthenticated(false);
       setSubscriptionChecked(false);
@@ -448,6 +453,8 @@ const App = () => {
   // ============ RENDER ============
 
   // Loading screen
+  console.log('[RENDER] authReady:', authReady, 'isAuth:', isAuthenticated, 'sub.loading:', subscription.loading, 'subChecked:', subscriptionChecked, 'tier:', subscription.tier, 'status:', subscription.status);
+
   if (!authReady) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
