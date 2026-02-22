@@ -169,10 +169,9 @@ const App = () => {
         const mapped = mapUser(user);
         setCurrentUser(mapped);
         setIsAuthenticated(true);
-        // subscription stays { loading: true } from initial state — useEffect will check
+        checkSubscription(mapped.id);
         load(mapped);
       } else {
-        // No user — not loading, nothing to check
         setSubscription({ tier: 'none', status: 'inactive', isAgency: false, loading: false });
         setSubscriptionChecked(true);
       }
@@ -182,11 +181,10 @@ const App = () => {
     netlifyIdentity.on('login', (user) => {
       const mapped = mapUser(user);
       setCurrentUser(mapped);
-      // Reset subscription state BEFORE setting isAuthenticated
-      // so React never sees isAuthenticated=true with stale subscription data
       setSubscription({ tier: 'none', status: 'inactive', isAgency: false, loading: true });
       setSubscriptionChecked(false);
       setIsAuthenticated(true);
+      checkSubscription(mapped.id);
       load(mapped);
       netlifyIdentity.close();
     });
@@ -206,13 +204,6 @@ const App = () => {
 
     netlifyIdentity.init();
   }, []);
-
-  // Check subscription whenever currentUser changes
-  useEffect(() => {
-    if (currentUser?.id) {
-      checkSubscription(currentUser.id);
-    }
-  }, [currentUser?.id]);
 
   useEffect(() => {
     const link = document.createElement('link');
