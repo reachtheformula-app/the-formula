@@ -439,18 +439,25 @@ const App = () => {
 
 VOICE & STYLE:
 - Write in first person as the caregiver alongside the children ("${childNames} and I dove into...")
-- Name each child specifically and capture what THEY did, said, or reacted to — never generic "the children enjoyed"
-- Narrate the day as a flowing story — one activity leads naturally to the next using transitions like "From there," "Once we had that down," "With our craft drying," etc.
-- Use playful but smart vocabulary — never talk down ("excavation" not "digging," "rehearsals" not "practice time")
-- Weave in humor, warmth, and little asides naturally ("or, as I called them, dino detectives")
-- Capture genuine kid moments — excitement, giggles, proud faces, funny suggestions
-- Even when things don't go perfectly, frame it positively ("cut a little short due to a small boo boo, but the children showed great resilience")
+- Name each child specifically and capture what THEY did — never generic "the children enjoyed"
+- Narrate the day as a flowing story with natural transitions
+- Use playful but smart vocabulary — never talk down
+- Weave in warmth naturally
+- Frame challenges positively
 - Open with energy about the group and the day's theme
-- End with a "Learning & Development Note:" section (2-4 sentences) that connects the day's activities to real developmental skills: fine motor, language, social-emotional, early math/literacy, creativity, etc.
+- End with a "Learning & Development Note:" section (2-4 sentences) connecting activities to real developmental skills
+
+CRITICAL RULE — DO NOT FABRICATE:
+- ONLY describe activities, moments, and details that are explicitly mentioned in the logged activities or caregiver notes below.
+- NEVER invent specific scenes, dialogue, facial expressions, or events that were not reported.
+- NEVER add made-up quotes from children.
+- If the caregiver says "child counted to 10," you can say that warmly — but do NOT invent a whole scenario about HOW they counted, what props they used, or what their face looked like unless that was provided.
+- It is better to write a shorter, honest letter than a longer one full of invented details.
+- Keep the letter grounded in what actually happened. Warmth and personality come from HOW you describe real moments, not from making up new ones.
 
 STRUCTURE:
 - Opening line with kids' names and energy about the day
-- 2-4 paragraphs narrating the day's activities as a story
+- 1-3 paragraphs narrating ONLY what was reported
 - Closing tease about tomorrow or a warm sign-off
 - "Learning & Development Note:" section at the end
 
@@ -459,6 +466,8 @@ WHAT TO AVOID:
 - Generic phrases like "had a great time" or "everyone enjoyed"
 - Overly formal or stiff language
 - Starting every sentence with a child's name
+- Inventing ANY details not provided by the caregiver
+- School language: never say "classroom," "students," "teacher," "lesson" — this is home learning. Use "our morning," "our space," "caregiver," etc.
 
 PRIORITY: If the caregiver provided additional context below, treat it as the primary source of truth for what happened today. Use their details, phrasing, and moments as the backbone of the letter — reshape and polish it into The Formula voice, but keep their specific observations and the real flow of the day.
 
@@ -470,7 +479,7 @@ ${dayDataForLetter ? `Focus: ${dayDataForLetter.focus}` : ''}
 ${languageNote}
 Activities logged: ${todaysActivities}${photosDescription}${extraNotes}
 
-Write 250-400 words in The Formula voice.`;
+Write in The Formula voice. Only describe what was actually reported — do not invent details. If minimal info was provided, write a shorter letter (150-250 words). If detailed notes were provided, write up to 400 words.`;
     try {
       const response = await fetch("/.netlify/functions/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }) });
       const data = await response.json();
