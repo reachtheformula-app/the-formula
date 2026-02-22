@@ -190,7 +190,7 @@ const App = () => {
     netlifyIdentity.on('logout', () => {
       setCurrentUser(null);
       setIsAuthenticated(false);
-      setSubscription({ tier: 'none', status: 'inactive', isAgency: false, loading: false });
+      setSubscription({ tier: 'none', status: 'inactive', isAgency: false, loading: true });
       setSubscriptionChecked(false);
       setCustomWeeks([]);
       setChildren([]);
