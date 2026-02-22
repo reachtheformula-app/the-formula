@@ -163,6 +163,7 @@ const App = () => {
         const mapped = mapUser(user);
         setCurrentUser(mapped);
         setIsAuthenticated(true);
+        setSubscription(prev => ({ ...prev, loading: true }));
         checkSubscription(mapped.id);
         load(mapped);
       } else {
@@ -580,8 +581,8 @@ const App = () => {
     </div>
   );
 
-  // Show pricing page if no active subscription
-  if (!hasGold() && view !== 'pricing' && view !== 'settings') {
+  // Show pricing page if no active subscription (and not still loading)
+  if (!hasGold() && !subscription.loading && view !== 'pricing' && view !== 'settings') {
     return (
       <div className="min-h-screen" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
         <PricingPage />
