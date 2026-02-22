@@ -159,25 +159,54 @@ const App = () => {
 
     const mapUser = (netlifyUser) => {
       if (!netlifyUser) return null;
-      return {
-        id: netlifyUser.id,
-        name: netlifyUser.user_metadata?.full_name || netlifyUser.user_metadata?.name || netlifyUser.user_metadata?.preferred_username || netlifyUser.email?.split('@')[0] || 'User',
-        email: netlifyUser.email
-      };
+      
+      // Try direct properties first (works on hard refresh / init with stored session)
+      if (netlifyUser.id) {
+        return {
+          id: netlifyUser.id,
+          name: netlifyUser.user_metadata?.full_name || netlifyUser.user_metadata?.name || netlifyUser.user_metadata?.preferred_username || netlifyUser.email?.split('@')[0] || 'User',
+          email: netlifyUser.email
+        };
+      }
+      
+      // Fall back to decoding JWT token (needed after Google OAuth login/redirect)
+      const accessToken = netlifyUser.token?.access_token;
+      if (accessToken) {
+        try {
+          const payload = JSON.parse(atob(accessToken.split('.')[1]));
+          return {
+            id: payload.sub,
+            name: payload.user_metadata?.full_name || payload.user_metadata?.name || payload.email?.split('@')[0] || 'User',
+            email: payload.email
+          };
+        } catch (e) {
+          console.error('Failed to decode JWT:', e);
+        }
+      }
+      
+      // Last resort: try netlifyIdentity.currentUser()
+      const current = window.netlifyIdentity?.currentUser();
+      if (current?.id) {
+        return {
+          id: current.id,
+          name: current.user_metadata?.full_name || current.user_metadata?.name || current.email?.split('@')[0] || 'User',
+          email: current.email
+        };
+      }
+      
+      return null;
     };
 
     netlifyIdentity.on('init', (user) => {
-      console.log('[INIT] full user object:', JSON.stringify(user, null, 2));
-      console.log('[INIT] user?.id:', user?.id);
-      console.log('[INIT] user?.token?.user?.id:', user?.token?.user?.id);
-      console.log('[INIT] user keys:', user ? Object.keys(user) : 'null');
       if (user) {
         const mapped = mapUser(user);
-        console.log('[INIT] mapped:', JSON.stringify(mapped));
-        setCurrentUser(mapped);
-        setIsAuthenticated(true);
-        checkSubscription(mapped.id);
-        load(mapped);
+        console.log('[INIT] mapped user:', mapped?.id, mapped?.email);
+        if (mapped) {
+          setCurrentUser(mapped);
+          setIsAuthenticated(true);
+          checkSubscription(mapped.id);
+          load(mapped);
+        }
       } else {
         setSubscription({ tier: 'none', status: 'inactive', isAgency: false, loading: false });
         setSubscriptionChecked(true);
@@ -186,18 +215,16 @@ const App = () => {
     });
 
     netlifyIdentity.on('login', (user) => {
-      console.log('[LOGIN] full user object:', JSON.stringify(user, null, 2));
-      console.log('[LOGIN] user?.id:', user?.id);
-      console.log('[LOGIN] user?.token?.user?.id:', user?.token?.user?.id);
-      console.log('[LOGIN] user keys:', user ? Object.keys(user) : 'null');
       const mapped = mapUser(user);
-      console.log('[LOGIN] mapped:', JSON.stringify(mapped));
-      setCurrentUser(mapped);
-      setSubscription({ tier: 'none', status: 'inactive', isAgency: false, loading: true });
-      setSubscriptionChecked(false);
-      setIsAuthenticated(true);
-      checkSubscription(mapped.id);
-      load(mapped);
+      console.log('[LOGIN] mapped user:', mapped?.id, mapped?.email);
+      if (mapped) {
+        setCurrentUser(mapped);
+        setSubscription({ tier: 'none', status: 'inactive', isAgency: false, loading: true });
+        setSubscriptionChecked(false);
+        setIsAuthenticated(true);
+        checkSubscription(mapped.id);
+        load(mapped);
+      }
       netlifyIdentity.close();
     });
 
