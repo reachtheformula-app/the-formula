@@ -31,6 +31,7 @@ const App = () => {
   const [editingLog, setEditingLog] = useState(null);
   const [childForm, setChildForm] = useState({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '' });
   const [logForm, setLogForm] = useState({ activity: '', notes: '', childId: '', photos: [] });
+  const [logViewMode, setLogViewMode] = useState('today');
   const [milestoneForm, setMilestoneForm] = useState({ title: '', childId: '', notes: '' });
   const [dayIdx, setDayIdx] = useState(0);
   const [expandedCircleTime, setExpandedCircleTime] = useState(false);
@@ -358,6 +359,20 @@ const App = () => {
   // Helper functions
   const getChildName = (id) => children.find(x => x.id === parseInt(id))?.name || 'All';
   const getTodayLogs = () => logs.filter(l => new Date(l.timestamp).toDateString() === new Date().toDateString());
+  const getPastLogs = () => {
+    const past = logs.filter(l => new Date(l.timestamp).toDateString() !== new Date().toDateString());
+    const grouped = {};
+    past.forEach(l => {
+      const dateKey = new Date(l.timestamp).toDateString();
+      if (!grouped[dateKey]) grouped[dateKey] = [];
+      grouped[dateKey].push(l);
+    });
+    return Object.entries(grouped).sort((a, b) => new Date(b[0]) - new Date(a[0])).map(([date, items]) => ({
+      date,
+      label: new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
+      logs: items.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+    }));
+  };
   const fmtTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const fmtDate = (ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const getLanguageLabel = () => { if (languageSetting === 'none') return null; if (languageSetting === 'french') return 'French'; if (languageSetting === 'spanish') return 'Spanish'; if (languageSetting === 'custom') return customLanguageName || 'Language'; return 'Language'; };
@@ -1030,59 +1045,110 @@ const App = () => {
               <button onClick={() => navigateTo('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
               <h2 className="text-xl font-bold" style={{color: c.wood}}>Activity Log</h2>
             </div>
-            <button onClick={() => { setEditingLog(null); setLogForm({ activity: '', notes: '', childId: '', photos: [] }); setShowLogForm(true); }} className="p-2 rounded-full" style={{backgroundColor: c.terra}}><Plus className="w-5 h-5 text-white" /></button>
+            {logViewMode === 'today' && (
+              <button onClick={() => { setEditingLog(null); setLogForm({ activity: '', notes: '', childId: '', photos: [] }); setShowLogForm(true); }} className="p-2 rounded-full" style={{backgroundColor: c.terra}}><Plus className="w-5 h-5 text-white" /></button>
+            )}
           </div>
-          {showLogForm && (
-            <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
-              <h3 className="font-semibold mb-3" style={{color: c.wood}}>{editingLog ? 'Edit' : 'Log'} Activity</h3>
-              <div className="space-y-3">
-                <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Activity *</label><input placeholder="e.g., Sensory play, Story time, Outdoor walk" value={logForm.activity} onChange={e => setLogForm({...logForm, activity: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
-                <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Notes</label><textarea placeholder="What happened? How did the child respond?" value={logForm.notes} onChange={e => setLogForm({...logForm, notes: e.target.value})} className="w-full px-3 py-2 rounded-lg border h-20" style={{borderColor: c.sand}} /></div>
-                <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Child</label><select value={logForm.childId} onChange={e => setLogForm({...logForm, childId: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}}>
-                <option value="">All Children</option>
-                {children.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-              </select></div>
-              </div>
-              <div className="mt-3">
-                <label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Photos</label>
-                <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" />
-                <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 rounded-lg border" style={{borderColor: c.sand, color: c.bark}}><Camera className="w-4 h-4" /><span className="text-sm">Add Photos</span></button>
-                {logForm.photos?.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {logForm.photos.map(photo => (<div key={photo.id} className="relative"><img src={photo.data} alt="" className="w-16 h-16 object-cover rounded-lg" /><button onClick={() => removePhoto(photo.id)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center"><X className="w-3 h-3 text-white" /></button></div>))}
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-2 mt-4">
-                <button onClick={saveLog} className="flex-1 py-2 rounded-lg font-semibold" style={{backgroundColor: c.terra, color: 'white'}}>Save</button>
-                <button onClick={() => { setShowLogForm(false); setEditingLog(null); }} className="px-4 py-2 rounded-lg" style={{backgroundColor: c.sand, color: c.wood}}>Cancel</button>
-              </div>
-            </div>
-          )}
-          <div className="space-y-3">
-            {logs.length === 0 ? (
-              <div className="text-center py-8"><Edit3 className="w-12 h-12 mx-auto mb-2" style={{color: c.sand}} /><p style={{color: c.bark}}>No activities logged yet</p></div>
-            ) : logs.map(log => (
-              <div key={log.id} className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <h3 className="font-semibold" style={{color: c.wood}}>{log.activity}</h3>
-                    {log.notes && <p className="text-sm mt-1" style={{color: c.bark}}>{log.notes}</p>}
-                    <div className="flex items-center gap-2 mt-2">
-                      <Clock className="w-3 h-3" style={{color: c.bark}} />
-                      <span className="text-xs" style={{color: c.bark}}>{fmtTime(log.timestamp)} • {fmtDate(log.timestamp)}</span>
-                      {log.childId && <span className="text-xs px-2 py-0.5 rounded-full" style={{backgroundColor: c.sand, color: c.wood}}>{getChildName(log.childId)}</span>}
-                    </div>
-                    {log.photos?.length > 0 && <div className="flex gap-1 mt-2">{log.photos.map(p => <img key={p.id} src={p.data} alt="" className="w-12 h-12 object-cover rounded" />)}</div>}
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => { setEditingLog(log); setLogForm(log); setShowLogForm(true); }}><Edit3 className="w-4 h-4" style={{color: c.bark}} /></button>
-                    <button onClick={() => delLog(log.id)}><Trash2 className="w-4 h-4" style={{color: c.terra}} /></button>
-                  </div>
-                </div>
-              </div>
+
+          {/* Today / History toggle */}
+          <div className="flex gap-2 mb-4">
+            {['today', 'history'].map(mode => (
+              <button key={mode} onClick={() => setLogViewMode(mode)} className="flex-1 py-2 rounded-lg text-sm font-semibold capitalize" style={{backgroundColor: logViewMode === mode ? c.terra : c.sand, color: logViewMode === mode ? 'white' : c.wood}}>
+                {mode === 'today' ? `Today (${getTodayLogs().length})` : `History (${getPastLogs().reduce((sum, g) => sum + g.logs.length, 0)})`}
+              </button>
             ))}
           </div>
+
+          {/* TODAY view */}
+          {logViewMode === 'today' && (
+            <>
+              {showLogForm && (
+                <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
+                  <h3 className="font-semibold mb-3" style={{color: c.wood}}>{editingLog ? 'Edit' : 'Log'} Activity</h3>
+                  <div className="space-y-3">
+                    <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Activity *</label><input placeholder="e.g., Sensory play, Story time, Outdoor walk" value={logForm.activity} onChange={e => setLogForm({...logForm, activity: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
+                    <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Notes</label><textarea placeholder="What happened? How did the child respond?" value={logForm.notes} onChange={e => setLogForm({...logForm, notes: e.target.value})} className="w-full px-3 py-2 rounded-lg border h-20" style={{borderColor: c.sand}} /></div>
+                    <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Child</label><select value={logForm.childId} onChange={e => setLogForm({...logForm, childId: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}}>
+                    <option value="">All Children</option>
+                    {children.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+                  </select></div>
+                  </div>
+                  <div className="mt-3">
+                    <label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Photos</label>
+                    <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" />
+                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 rounded-lg border" style={{borderColor: c.sand, color: c.bark}}><Camera className="w-4 h-4" /><span className="text-sm">Add Photos</span></button>
+                    {logForm.photos?.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {logForm.photos.map(photo => (<div key={photo.id} className="relative"><img src={photo.data} alt="" className="w-16 h-16 object-cover rounded-lg" /><button onClick={() => removePhoto(photo.id)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center"><X className="w-3 h-3 text-white" /></button></div>))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <button onClick={saveLog} className="flex-1 py-2 rounded-lg font-semibold" style={{backgroundColor: c.terra, color: 'white'}}>Save</button>
+                    <button onClick={() => { setShowLogForm(false); setEditingLog(null); }} className="px-4 py-2 rounded-lg" style={{backgroundColor: c.sand, color: c.wood}}>Cancel</button>
+                  </div>
+                </div>
+              )}
+              <div className="space-y-3">
+                {getTodayLogs().length === 0 ? (
+                  <div className="text-center py-8"><Edit3 className="w-12 h-12 mx-auto mb-2" style={{color: c.sand}} /><p style={{color: c.bark}}>No activities logged today</p><p className="text-sm mt-1" style={{color: c.bark}}>Tap + to log your first activity</p></div>
+                ) : getTodayLogs().map(log => (
+                  <div key={log.id} className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <h3 className="font-semibold" style={{color: c.wood}}>{log.activity}</h3>
+                        {log.notes && <p className="text-sm mt-1" style={{color: c.bark}}>{log.notes}</p>}
+                        <div className="flex items-center gap-2 mt-2">
+                          <Clock className="w-3 h-3" style={{color: c.bark}} />
+                          <span className="text-xs" style={{color: c.bark}}>{fmtTime(log.timestamp)}</span>
+                          {log.childId && <span className="text-xs px-2 py-0.5 rounded-full" style={{backgroundColor: c.sand, color: c.wood}}>{getChildName(log.childId)}</span>}
+                        </div>
+                        {log.photos?.length > 0 && <div className="flex gap-1 mt-2">{log.photos.map(p => <img key={p.id} src={p.data} alt="" className="w-12 h-12 object-cover rounded" />)}</div>}
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => { setEditingLog(log); setLogForm(log); setShowLogForm(true); }}><Edit3 className="w-4 h-4" style={{color: c.bark}} /></button>
+                        <button onClick={() => delLog(log.id)}><Trash2 className="w-4 h-4" style={{color: c.terra}} /></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* HISTORY view */}
+          {logViewMode === 'history' && (
+            <div className="space-y-5">
+              {getPastLogs().length === 0 ? (
+                <div className="text-center py-8"><Calendar className="w-12 h-12 mx-auto mb-2" style={{color: c.sand}} /><p style={{color: c.bark}}>No past logs yet</p><p className="text-sm mt-1" style={{color: c.bark}}>Yesterday's logs will appear here automatically</p></div>
+              ) : getPastLogs().map(group => (
+                <div key={group.date}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Calendar className="w-4 h-4" style={{color: c.terra}} />
+                    <h3 className="font-semibold text-sm" style={{color: c.wood}}>{group.label}</h3>
+                    <span className="text-xs px-2 py-0.5 rounded-full" style={{backgroundColor: c.sand, color: c.bark}}>{group.logs.length} {group.logs.length === 1 ? 'entry' : 'entries'}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {group.logs.map(log => (
+                      <div key={log.id} className="bg-white rounded-xl p-3 shadow-sm" style={{border: `1px solid ${c.sand}`}}>
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <h4 className="font-medium text-sm" style={{color: c.wood}}>{log.activity}</h4>
+                            {log.notes && <p className="text-xs mt-1" style={{color: c.bark}}>{log.notes}</p>}
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs" style={{color: c.bark}}>{fmtTime(log.timestamp)}</span>
+                              {log.childId && <span className="text-xs px-2 py-0.5 rounded-full" style={{backgroundColor: c.sand, color: c.wood}}>{getChildName(log.childId)}</span>}
+                            </div>
+                            {log.photos?.length > 0 && <div className="flex gap-1 mt-2">{log.photos.map(p => <img key={p.id} src={p.data} alt="" className="w-10 h-10 object-cover rounded" />)}</div>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
