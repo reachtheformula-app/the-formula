@@ -17,7 +17,7 @@ const App = () => {
   const [selectedWeek, setSelectedWeek] = useState(null);
   const [selectedDay, setSelectedDay] = useState(0);
   const [letter, setLetter] = useState('');
-  const [letterTone, setLetterTone] = useState('warm');
+  const [letterNotes, setLetterNotes] = useState('');
   const [customWeeks, setCustomWeeks] = useState([]);
   const [weeks, setWeeks] = useState([]);
   const [loadingWeeks, setLoadingWeeks] = useState(true);
@@ -428,15 +428,51 @@ const App = () => {
     setIsGeneratingLetter(true); setAiError(null);
     const w = selectedWeek || weeks[0];
     const tl = getTodayLogs();
-    const cn = children[0]?.name || 'your little one';
+    const childNames = children.length > 0 ? children.map(ch => ch.name).join(', ') : 'your little one';
     const dayDataForLetter = w.hasRichData && w.days ? w.days[selectedDay] : null;
     const todaysActivities = tl.length > 0 ? tl.map(l => `${fmtTime(l.timestamp)} - ${l.activity}${l.notes ? `: ${l.notes}` : ''}`).join('\n') : 'Standard curriculum activities';
     const photosDescription = tl.filter(l => l.photos?.length > 0).length > 0 ? `\n\nNote: ${tl.filter(l => l.photos?.length > 0).reduce((acc, l) => acc + (l.photos?.length || 0), 0)} photos were captured today.` : '';
     const langLabel = getLanguageLabel();
-    const languageNote = langLabel && dayDataForLetter?.frenchWord ? `${langLabel} word: ${dayDataForLetter.frenchWord}.` : '';
-    const prompt = `You are a warm, professional nanny writing a daily letter to parents. Child: ${cn}. Date: ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}. Theme: "${w.theme}". ${dayDataForLetter ? `Focus: ${dayDataForLetter.focus}. ${languageNote}` : ''} Activities: ${todaysActivities}${photosDescription} Tone: ${letterTone}. Write 200-300 words.`;
+    const languageNote = langLabel && dayDataForLetter?.frenchWord ? `${langLabel} word of the day: ${dayDataForLetter.frenchWord}.` : '';
+    const extraNotes = letterNotes.trim() ? `\n\nADDITIONAL CONTEXT FROM CAREGIVER (use this heavily — it contains the real details, moments, and flow of the day):\n${letterNotes.trim()}` : '';
+    const prompt = `You are writing a daily parent letter in The Formula's signature voice. Study these style rules carefully:
+
+VOICE & STYLE:
+- Write in first person as the caregiver alongside the children ("${childNames} and I dove into...")
+- Name each child specifically and capture what THEY did, said, or reacted to — never generic "the children enjoyed"
+- Narrate the day as a flowing story — one activity leads naturally to the next using transitions like "From there," "Once we had that down," "With our craft drying," etc.
+- Use playful but smart vocabulary — never talk down ("excavation" not "digging," "rehearsals" not "practice time")
+- Weave in humor, warmth, and little asides naturally ("or, as I called them, dino detectives")
+- Capture genuine kid moments — excitement, giggles, proud faces, funny suggestions
+- Even when things don't go perfectly, frame it positively ("cut a little short due to a small boo boo, but the children showed great resilience")
+- Open with energy about the group and the day's theme
+- End with a "Learning & Development Note:" section (2-4 sentences) that connects the day's activities to real developmental skills: fine motor, language, social-emotional, early math/literacy, creativity, etc.
+
+STRUCTURE:
+- Opening line with kids' names and energy about the day
+- 2-4 paragraphs narrating the day's activities as a story
+- Closing tease about tomorrow or a warm sign-off
+- "Learning & Development Note:" section at the end
+
+WHAT TO AVOID:
+- Bullet points or lists in the narrative
+- Generic phrases like "had a great time" or "everyone enjoyed"
+- Overly formal or stiff language
+- Starting every sentence with a child's name
+
+PRIORITY: If the caregiver provided additional context below, treat it as the primary source of truth for what happened today. Use their details, phrasing, and moments as the backbone of the letter — reshape and polish it into The Formula voice, but keep their specific observations and the real flow of the day.
+
+NOW WRITE THE LETTER:
+Children: ${childNames}
+Date: ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+Theme: "${w.theme}"
+${dayDataForLetter ? `Focus: ${dayDataForLetter.focus}` : ''}
+${languageNote}
+Activities logged: ${todaysActivities}${photosDescription}${extraNotes}
+
+Write 250-400 words in The Formula voice.`;
     try {
-      const response = await fetch("/.netlify/functions/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }) });
+      const response = await fetch("/.netlify/functions/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }) });
       const data = await response.json();
       if (data.content?.[0]?.text) setLetter(data.content[0].text);
       else throw new Error(data.error?.message || 'API error');
@@ -445,12 +481,13 @@ const App = () => {
   };
 
   const genTemplateLetter = () => {
-    const w = selectedWeek || weeks[0]; const tl = getTodayLogs(); const cn = children[0]?.name || 'your little one';
+    const w = selectedWeek || weeks[0]; const tl = getTodayLogs();
+    const childNames = children.length > 0 ? children.map(ch => ch.name).join(', ') : 'your little one';
     const dayDataForLetter = w.hasRichData && w.days ? w.days[selectedDay] : null;
-    const tones = { warm: { g: 'Dear Parents,', cl: 'Warm regards,', a: 'wonderful' }, professional: { g: 'Hello,', cl: 'Best regards,', a: 'productive' }, fun: { g: 'Hey there! 🌟', cl: 'See you tomorrow! 🎉', a: 'amazing' }};
-    const t = tones[letterTone]; let ls = tl.length > 0 ? `\n**Today's Activities:**\n${tl.map(l => `• ${fmtTime(l.timestamp)} - ${l.activity}${l.notes ? `: ${l.notes}` : ''}`).join('\n')}\n` : '';
-    const langLabel = getLanguageLabel(); const languageNote = langLabel && dayDataForLetter?.frenchWord ? `\n**${langLabel} Word:** ${dayDataForLetter.frenchWord}\n` : '';
-    setLetter(`${t.g}\n\nWhat a ${t.a} day exploring "${w.theme}" with ${cn}!${languageNote}${ls}\n\nLooking forward to tomorrow!\n\n${t.cl}\n[Your Name]`);
+    const langLabel = getLanguageLabel(); const languageNote = langLabel && dayDataForLetter?.frenchWord ? `\nWe also practiced our ${langLabel} word of the day: "${dayDataForLetter.frenchWord}"!\n` : '';
+    let activities = tl.length > 0 ? tl.map(l => `${l.activity}${l.notes ? ` — ${l.notes}` : ''}`).join(', then ') : 'our curriculum activities';
+    const extra = letterNotes.trim() ? `\n\n${letterNotes.trim()}\n` : '';
+    setLetter(`${childNames} had such a wonderful morning today as we continued exploring "${w.theme}"! We started the day with ${activities}.${languageNote}${extra}\n\nIt was great to see everyone so engaged and having fun while learning. Stay tuned for what's in store tomorrow!\n\nLearning & Development Note:\nToday's activities supported a range of developmental areas including creativity, social skills, and early learning concepts — all through the power of play.\n\n[Your Name]`);
   };
 
   const generateAIWeek = async () => {
@@ -1160,16 +1197,13 @@ const App = () => {
             <h2 className="text-xl font-bold" style={{color: c.wood}}>Daily Letter</h2>
           </div>
           <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
-            <label className="text-sm font-medium block mb-2" style={{color: c.wood}}>Letter Tone</label>
-            <div className="flex gap-2">
-              {['warm', 'professional', 'fun'].map(tone => (
-                <button key={tone} onClick={() => setLetterTone(tone)} className="flex-1 py-2 rounded-lg text-sm font-medium capitalize" style={{backgroundColor: letterTone === tone ? c.terra : c.sand, color: letterTone === tone ? 'white' : c.wood}}>{tone}</button>
-              ))}
-            </div>
+            <label className="text-sm font-medium block mb-1" style={{color: c.wood}}>How was the day?</label>
+            <p className="text-xs mb-2" style={{color: c.bark}}>Optional — jot down what you did, funny moments, how the kids reacted. The more detail, the better the letter.</p>
+            <textarea value={letterNotes} onChange={e => setLetterNotes(e.target.value)} placeholder="e.g., We started with circle time and talked about healthy foods. Cora tried broccoli for the first time and made the funniest face! Then we did a sorting activity with plastic fruits..." className="w-full px-3 py-2 rounded-lg border h-28 text-sm" style={{borderColor: c.sand}} />
           </div>
           <div className="flex gap-2 mb-4">
             <button onClick={generateAILetter} disabled={isGeneratingLetter} className="flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 disabled:opacity-50" style={{backgroundColor: c.terra, color: 'white'}}>
-              {isGeneratingLetter ? <><Loader className="w-5 h-5 animate-spin" />Generating...</> : <><Sparkles className="w-5 h-5" />Generate with AI</>}
+              {isGeneratingLetter ? <><Loader className="w-5 h-5 animate-spin" />Generating...</> : <><Sparkles className="w-5 h-5" />Generate Letter</>}
             </button>
             <button onClick={genTemplateLetter} className="px-4 py-3 rounded-xl font-semibold" style={{backgroundColor: c.sand, color: c.wood}}>Template</button>
           </div>
