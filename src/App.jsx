@@ -295,6 +295,7 @@ const App = () => {
   const load = (user) => {
     const u = user || currentUser;
     if (!u) return;
+    // Load custom weeks from DB
     fetch(`/.netlify/functions/user-weeks?userId=${u.id}`)
       .then(res => res.json())
       .then(rows => {
@@ -313,15 +314,55 @@ const App = () => {
         }
       })
       .catch(err => console.error('Failed to load custom weeks:', err));
+
+    // Load children from DB
+    fetch(`/.netlify/functions/user-data?type=children&userId=${u.id}`)
+      .then(res => res.json())
+      .then(rows => {
+        if (Array.isArray(rows)) {
+          setChildren(rows.map(r => ({
+            id: r.id, name: r.name, age: r.age || '', birthday: r.birthday || '',
+            allergies: r.allergies || '', parentName: r.parent_name || '',
+            parentEmail: r.parent_email || '', parentPhone: r.parent_phone || '', notes: r.notes || ''
+          })));
+        }
+      })
+      .catch(err => console.error('Failed to load children:', err));
+
+    // Load milestones from DB
+    fetch(`/.netlify/functions/user-data?type=milestones&userId=${u.id}`)
+      .then(res => res.json())
+      .then(rows => {
+        if (Array.isArray(rows)) {
+          setMilestones(rows.map(r => ({
+            id: r.id, title: r.title, childId: r.child_id ? String(r.child_id) : '',
+            notes: r.notes || '', date: r.date
+          })));
+        }
+      })
+      .catch(err => console.error('Failed to load milestones:', err));
+
+    // Load activity logs from DB
+    fetch(`/.netlify/functions/user-data?type=logs&userId=${u.id}`)
+      .then(res => res.json())
+      .then(rows => {
+        if (Array.isArray(rows)) {
+          setLogs(rows.map(r => ({
+            id: r.id, activity: r.activity, notes: r.notes || '',
+            childId: r.child_id || '', timestamp: r.timestamp,
+            photos: typeof r.photos === 'string' ? JSON.parse(r.photos) : (r.photos || [])
+          })));
+        }
+      })
+      .catch(err => console.error('Failed to load activity logs:', err));
+
+    // Load local-only settings (selected week, language)
     try {
-      const settingsKeys = ['fc', 'fl', 'fm', 'fs', 'fls'];
-      const data = settingsKeys.map(k => { const item = localStorage.getItem(getStorageKey(k, u)); return item ? JSON.parse(item) : null; });
-      if (data[0]) setChildren(data[0]);
-      if (data[1]) setLogs(data[1]);
-      if (data[2]) setMilestones(data[2]);
-      if (data[3]) { const w = [...weeks].find(x => x.id === data[3]); if (w) setSelectedWeek(w); }
-      if (data[4]) { setLanguageSetting(data[4].language || 'none'); setCustomLanguageName(data[4].customName || ''); }
-    } catch (e) { console.error('Load error:', e); }
+      const fsData = localStorage.getItem(getStorageKey('fs', u));
+      if (fsData) { const w = [...weeks].find(x => x.id === JSON.parse(fsData)); if (w) setSelectedWeek(w); }
+      const flsData = localStorage.getItem(getStorageKey('fls', u));
+      if (flsData) { const d = JSON.parse(flsData); setLanguageSetting(d.language || 'none'); setCustomLanguageName(d.customName || ''); }
+    } catch (e) { console.error('Load settings error:', e); }
   };
 
   // ========== INFANT ROUTINES ==========
@@ -388,14 +429,91 @@ const App = () => {
     return matchesSearch && matchesSeason && matchesFocus && matchesAge;
   });
 
-  const saveChild = () => { if (!childForm.name) return; const n = editingChild ? children.map(x => x.id === editingChild.id ? { ...childForm, id: editingChild.id } : x) : [...children, { ...childForm, id: Date.now() }]; setChildren(n); save('fc', n); setChildForm({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '' }); setEditingChild(null); setShowChildForm(false); };
-  const delChild = (id) => { if (!window.confirm('Are you sure you want to remove this child? This cannot be undone.')) return; const n = children.filter(x => x.id !== id); setChildren(n); save('fc', n); };
+  const saveChild = async () => {
+    if (!childForm.name) return;
+    try {
+      if (editingChild) {
+        // Update existing child
+        await fetch(`/.netlify/functions/user-data?type=children&userId=${currentUser.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingChild.id, ...childForm })
+        });
+        setChildren(prev => prev.map(x => x.id === editingChild.id ? { ...childForm, id: editingChild.id } : x));
+      } else {
+        // Create new child
+        const resp = await fetch(`/.netlify/functions/user-data?type=children&userId=${currentUser.id}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(childForm)
+        });
+        const newChild = await resp.json();
+        setChildren(prev => [...prev, { ...childForm, id: newChild.id }]);
+      }
+    } catch (err) { console.error('Failed to save child:', err); }
+    setChildForm({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '' });
+    setEditingChild(null); setShowChildForm(false);
+  };
+
+  const delChild = async (id) => {
+    if (!window.confirm('Are you sure you want to remove this child? This cannot be undone.')) return;
+    setChildren(prev => prev.filter(x => x.id !== id));
+    try { await fetch(`/.netlify/functions/user-data?type=children&userId=${currentUser.id}&id=${id}`, { method: 'DELETE' }); }
+    catch (err) { console.error('Failed to delete child:', err); }
+  };
+
   const handlePhotoUpload = (e) => { const files = Array.from(e.target.files); files.forEach(file => { const reader = new FileReader(); reader.onloadend = () => setLogForm(prev => ({ ...prev, photos: [...(prev.photos || []), { id: Date.now() + Math.random(), data: reader.result, name: file.name }] })); reader.readAsDataURL(file); }); };
   const removePhoto = (photoId) => setLogForm(prev => ({ ...prev, photos: prev.photos.filter(p => p.id !== photoId) }));
-  const saveLog = () => { if (!logForm.activity) return; const n = editingLog ? logs.map(l => l.id === editingLog.id ? { ...logForm, id: editingLog.id, timestamp: editingLog.timestamp } : l) : [{ ...logForm, id: Date.now(), timestamp: new Date().toISOString() }, ...logs]; setLogs(n); save('fl', n); setLogForm({ activity: '', notes: '', childId: '', photos: [] }); setEditingLog(null); setShowLogForm(false); };
-  const delLog = (id) => { if (!window.confirm('Delete this activity log?')) return; const n = logs.filter(l => l.id !== id); setLogs(n); save('fl', n); };
-  const saveMilestone = () => { if (!milestoneForm.title) return; const n = [{ ...milestoneForm, id: Date.now(), date: new Date().toISOString() }, ...milestones]; setMilestones(n); save('fm', n); setMilestoneForm({ title: '', childId: '', notes: '' }); setShowMilestoneForm(false); };
-  const delMilestone = (id) => { if (!window.confirm('Delete this milestone?')) return; const n = milestones.filter(m => m.id !== id); setMilestones(n); save('fm', n); };
+
+  const saveLog = async () => {
+    if (!logForm.activity) return;
+    try {
+      if (editingLog) {
+        // Update existing log
+        await fetch(`/.netlify/functions/user-data?type=logs&userId=${currentUser.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingLog.id, activity: logForm.activity, notes: logForm.notes, childId: logForm.childId, photos: logForm.photos })
+        });
+        setLogs(prev => prev.map(l => l.id === editingLog.id ? { ...logForm, id: editingLog.id, timestamp: editingLog.timestamp } : l));
+      } else {
+        // Create new log
+        const timestamp = new Date().toISOString();
+        const resp = await fetch(`/.netlify/functions/user-data?type=logs&userId=${currentUser.id}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ activity: logForm.activity, notes: logForm.notes, childId: logForm.childId, photos: logForm.photos, timestamp })
+        });
+        const newLog = await resp.json();
+        setLogs(prev => [{ ...logForm, id: newLog.id, timestamp: newLog.timestamp || timestamp }, ...prev]);
+      }
+    } catch (err) { console.error('Failed to save log:', err); }
+    setLogForm({ activity: '', notes: '', childId: '', photos: [] }); setEditingLog(null); setShowLogForm(false);
+  };
+
+  const delLog = async (id) => {
+    if (!window.confirm('Delete this activity log?')) return;
+    setLogs(prev => prev.filter(l => l.id !== id));
+    try { await fetch(`/.netlify/functions/user-data?type=logs&userId=${currentUser.id}&id=${id}`, { method: 'DELETE' }); }
+    catch (err) { console.error('Failed to delete log:', err); }
+  };
+
+  const saveMilestone = async () => {
+    if (!milestoneForm.title) return;
+    try {
+      const date = new Date().toISOString();
+      const resp = await fetch(`/.netlify/functions/user-data?type=milestones&userId=${currentUser.id}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: milestoneForm.title, childId: milestoneForm.childId, notes: milestoneForm.notes, date })
+      });
+      const newMilestone = await resp.json();
+      setMilestones(prev => [{ ...milestoneForm, id: newMilestone.id, date: newMilestone.date || date }, ...prev]);
+    } catch (err) { console.error('Failed to save milestone:', err); }
+    setMilestoneForm({ title: '', childId: '', notes: '' }); setShowMilestoneForm(false);
+  };
+
+  const delMilestone = async (id) => {
+    if (!window.confirm('Delete this milestone?')) return;
+    setMilestones(prev => prev.filter(m => m.id !== id));
+    try { await fetch(`/.netlify/functions/user-data?type=milestones&userId=${currentUser.id}&id=${id}`, { method: 'DELETE' }); }
+    catch (err) { console.error('Failed to delete milestone:', err); }
+  };
   const selectWeek = (w) => { setSelectedWeek(w); setSelectedDay(0); setIsEditMode(false); save('fs', w.id); navigateTo('dailyPlan'); };
   
   const saveCustomWeek = async () => {
