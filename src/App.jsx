@@ -9,6 +9,7 @@ const App = () => {
 
   // Subscription state
   const [subscription, setSubscription] = useState({ tier: 'none', status: 'inactive', isAgency: false, loading: true });
+  const [subscriptionChecked, setSubscriptionChecked] = useState(false);
   const [checkoutMessage, setCheckoutMessage] = useState(null);
 
   // App state
@@ -67,13 +68,18 @@ const App = () => {
   const hasPlatinum = () => isActive() && hasTier('platinum');
 
   const checkSubscription = async (userId) => {
+    setSubscription(prev => ({ ...prev, loading: true }));
     try {
       const resp = await fetch(`/.netlify/functions/check-subscription?userId=${userId}`);
       const data = await resp.json();
       setSubscription({ tier: data.tier || 'none', status: data.status || 'inactive', isAgency: data.isAgency || false, loading: false });
+      setSubscriptionChecked(true);
+      return data;
     } catch (err) {
       console.error('Failed to check subscription:', err);
       setSubscription(prev => ({ ...prev, loading: false }));
+      setSubscriptionChecked(true);
+      return null;
     }
   };
 
@@ -186,6 +192,7 @@ const App = () => {
       setCurrentUser(null);
       setIsAuthenticated(false);
       setSubscription({ tier: 'none', status: 'inactive', isAgency: false, loading: false });
+      setSubscriptionChecked(false);
       setCustomWeeks([]);
       setChildren([]);
       setLogs([]);
@@ -476,8 +483,8 @@ const App = () => {
     );
   }
 
-  // Subscription loading
-  if (subscription.loading) {
+  // Subscription loading — show while checking subscription after login
+  if (subscription.loading || !subscriptionChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
         <div className="text-center">
@@ -581,8 +588,8 @@ const App = () => {
     </div>
   );
 
-  // Show pricing page if no active subscription (and not still loading)
-  if (!hasGold() && !subscription.loading && view !== 'pricing' && view !== 'settings') {
+  // Show pricing page if no active subscription (and subscription check is complete)
+  if (!hasGold() && subscriptionChecked && !subscription.loading && view !== 'pricing' && view !== 'settings') {
     return (
       <div className="min-h-screen" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
         <PricingPage />
