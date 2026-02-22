@@ -20,8 +20,8 @@ export async function handler(event) {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing userId' }) };
   }
 
-  if (!type || !['children', 'milestones', 'logs'].includes(type)) {
-    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid type (children, milestones, logs)' }) };
+  if (!type || !['children', 'milestones', 'logs', 'settings'].includes(type)) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing or invalid type (children, milestones, logs, settings)' }) };
   }
 
   try {
@@ -32,6 +32,9 @@ export async function handler(event) {
         rows = await sql`SELECT * FROM children WHERE user_id = ${userId} ORDER BY created_at ASC`;
       } else if (type === 'milestones') {
         rows = await sql`SELECT * FROM milestones WHERE user_id = ${userId} ORDER BY date DESC`;
+      } else if (type === 'settings') {
+        rows = await sql`SELECT * FROM user_settings WHERE user_id = ${userId}`;
+        return { statusCode: 200, headers, body: JSON.stringify(rows[0] || { selected_week_id: null, language: 'none', custom_language_name: '' }) };
       } else {
         rows = await sql`SELECT * FROM activity_logs WHERE user_id = ${userId} ORDER BY timestamp DESC`;
       }
@@ -65,6 +68,18 @@ export async function handler(event) {
           VALUES (${userId}, ${body.childId || ''}, ${body.activity}, ${body.notes || ''}, ${photos}::jsonb, ${body.timestamp || new Date().toISOString()})
           RETURNING *`;
         return { statusCode: 201, headers, body: JSON.stringify(rows[0]) };
+      }
+
+      if (type === 'settings') {
+        await sql`
+          INSERT INTO user_settings (user_id, selected_week_id, language, custom_language_name, updated_at)
+          VALUES (${userId}, ${body.selectedWeekId || null}, ${body.language || 'none'}, ${body.customLanguageName || ''}, NOW())
+          ON CONFLICT (user_id) DO UPDATE SET
+            selected_week_id = ${body.selectedWeekId || null},
+            language = ${body.language || 'none'},
+            custom_language_name = ${body.customLanguageName || ''},
+            updated_at = NOW()`;
+        return { statusCode: 200, headers, body: JSON.stringify({ success: true }) };
       }
     }
 
