@@ -175,6 +175,7 @@ const App = () => {
       const mapped = mapUser(user);
       setCurrentUser(mapped);
       setIsAuthenticated(true);
+      setSubscription(prev => ({ ...prev, loading: true }));
       checkSubscription(mapped.id);
       load(mapped);
       netlifyIdentity.close();
@@ -314,13 +315,13 @@ const App = () => {
   });
 
   const saveChild = () => { if (!childForm.name) return; const n = editingChild ? children.map(x => x.id === editingChild.id ? { ...childForm, id: editingChild.id } : x) : [...children, { ...childForm, id: Date.now() }]; setChildren(n); save('fc', n); setChildForm({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '' }); setEditingChild(null); setShowChildForm(false); };
-  const delChild = (id) => { const n = children.filter(x => x.id !== id); setChildren(n); save('fc', n); };
+  const delChild = (id) => { if (!window.confirm('Are you sure you want to remove this child? This cannot be undone.')) return; const n = children.filter(x => x.id !== id); setChildren(n); save('fc', n); };
   const handlePhotoUpload = (e) => { const files = Array.from(e.target.files); files.forEach(file => { const reader = new FileReader(); reader.onloadend = () => setLogForm(prev => ({ ...prev, photos: [...(prev.photos || []), { id: Date.now() + Math.random(), data: reader.result, name: file.name }] })); reader.readAsDataURL(file); }); };
   const removePhoto = (photoId) => setLogForm(prev => ({ ...prev, photos: prev.photos.filter(p => p.id !== photoId) }));
   const saveLog = () => { if (!logForm.activity) return; const n = editingLog ? logs.map(l => l.id === editingLog.id ? { ...logForm, id: editingLog.id, timestamp: editingLog.timestamp } : l) : [{ ...logForm, id: Date.now(), timestamp: new Date().toISOString() }, ...logs]; setLogs(n); save('fl', n); setLogForm({ activity: '', notes: '', childId: '', photos: [] }); setEditingLog(null); setShowLogForm(false); };
-  const delLog = (id) => { const n = logs.filter(l => l.id !== id); setLogs(n); save('fl', n); };
+  const delLog = (id) => { if (!window.confirm('Delete this activity log?')) return; const n = logs.filter(l => l.id !== id); setLogs(n); save('fl', n); };
   const saveMilestone = () => { if (!milestoneForm.title) return; const n = [{ ...milestoneForm, id: Date.now(), date: new Date().toISOString() }, ...milestones]; setMilestones(n); save('fm', n); setMilestoneForm({ title: '', childId: '', notes: '' }); setShowMilestoneForm(false); };
-  const delMilestone = (id) => { const n = milestones.filter(m => m.id !== id); setMilestones(n); save('fm', n); };
+  const delMilestone = (id) => { if (!window.confirm('Delete this milestone?')) return; const n = milestones.filter(m => m.id !== id); setMilestones(n); save('fm', n); };
   const selectWeek = (w) => { setSelectedWeek(w); setSelectedDay(0); setIsEditMode(false); save('fs', w.id); setView('dailyPlan'); };
   
   const saveCustomWeek = async () => {
@@ -340,7 +341,7 @@ const App = () => {
     setNewWeek({ theme: '', season: '', focus: '', daysToInclude: [1,1,1,1,1,0,0], days: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => ({ name: x, activities: {...emptyDay} })) });
     setDayIdx(0); setView('weeklyThemes');
   };
-  const delCustomWeek = async (id) => { setCustomWeeks(prev => prev.filter(w => w.id !== id)); try { await fetch(`/.netlify/functions/user-weeks?id=${id}&userId=${currentUser.id}`, { method: 'DELETE' }); } catch (err) { console.error('Failed to delete week from database:', err); } };
+  const delCustomWeek = async (id) => { if (!window.confirm('Delete this custom week? This cannot be undone.')) return; setCustomWeeks(prev => prev.filter(w => w.id !== id)); try { await fetch(`/.netlify/functions/user-weeks?id=${id}&userId=${currentUser.id}`, { method: 'DELETE' }); } catch (err) { console.error('Failed to delete week from database:', err); } };
 
   // Inline editing
   const editDayField = (dayIndex, field, value) => { const updated = { ...selectedWeek, days: selectedWeek.days.map((d, i) => i === dayIndex ? { ...d, [field]: value } : d) }; setSelectedWeek(updated); setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w)); };
@@ -962,13 +963,16 @@ const App = () => {
           {showLogForm && (
             <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
               <h3 className="font-semibold mb-3" style={{color: c.wood}}>{editingLog ? 'Edit' : 'Log'} Activity</h3>
-              <input placeholder="Activity name" value={logForm.activity} onChange={e => setLogForm({...logForm, activity: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-2" style={{borderColor: c.sand}} />
-              <textarea placeholder="Notes (optional)" value={logForm.notes} onChange={e => setLogForm({...logForm, notes: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-2 h-20" style={{borderColor: c.sand}} />
-              <select value={logForm.childId} onChange={e => setLogForm({...logForm, childId: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-3" style={{borderColor: c.sand}}>
+              <div className="space-y-3">
+                <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Activity *</label><input placeholder="e.g., Sensory play, Story time, Outdoor walk" value={logForm.activity} onChange={e => setLogForm({...logForm, activity: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
+                <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Notes</label><textarea placeholder="What happened? How did the child respond?" value={logForm.notes} onChange={e => setLogForm({...logForm, notes: e.target.value})} className="w-full px-3 py-2 rounded-lg border h-20" style={{borderColor: c.sand}} /></div>
+                <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Child</label><select value={logForm.childId} onChange={e => setLogForm({...logForm, childId: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}}>
                 <option value="">All Children</option>
                 {children.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-              </select>
-              <div className="mb-3">
+              </select></div>
+              </div>
+              <div className="mt-3">
+                <label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Photos</label>
                 <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" />
                 <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 rounded-lg border" style={{borderColor: c.sand, color: c.bark}}><Camera className="w-4 h-4" /><span className="text-sm">Add Photos</span></button>
                 {logForm.photos?.length > 0 && (
@@ -977,7 +981,7 @@ const App = () => {
                   </div>
                 )}
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 mt-4">
                 <button onClick={saveLog} className="flex-1 py-2 rounded-lg font-semibold" style={{backgroundColor: c.terra, color: 'white'}}>Save</button>
                 <button onClick={() => { setShowLogForm(false); setEditingLog(null); }} className="px-4 py-2 rounded-lg" style={{backgroundColor: c.sand, color: c.wood}}>Cancel</button>
               </div>
@@ -1060,15 +1064,21 @@ const App = () => {
           {showChildForm && (
             <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
               <h3 className="font-semibold mb-3" style={{color: c.wood}}>{editingChild ? 'Edit' : 'Add'} Child</h3>
-              <input placeholder="Name" value={childForm.name} onChange={e => setChildForm({...childForm, name: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-2" style={{borderColor: c.sand}} />
-              <input placeholder="Age" value={childForm.age} onChange={e => setChildForm({...childForm, age: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-2" style={{borderColor: c.sand}} />
-              <input placeholder="Birthday" value={childForm.birthday} onChange={e => setChildForm({...childForm, birthday: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-2" style={{borderColor: c.sand}} />
-              <input placeholder="Allergies" value={childForm.allergies} onChange={e => setChildForm({...childForm, allergies: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-2" style={{borderColor: c.sand}} />
-              <input placeholder="Parent Name" value={childForm.parentName} onChange={e => setChildForm({...childForm, parentName: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-2" style={{borderColor: c.sand}} />
-              <input placeholder="Parent Email" value={childForm.parentEmail} onChange={e => setChildForm({...childForm, parentEmail: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-2" style={{borderColor: c.sand}} />
-              <input placeholder="Parent Phone" value={childForm.parentPhone} onChange={e => setChildForm({...childForm, parentPhone: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-2" style={{borderColor: c.sand}} />
-              <textarea placeholder="Notes" value={childForm.notes} onChange={e => setChildForm({...childForm, notes: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-3 h-20" style={{borderColor: c.sand}} />
-              <div className="flex gap-2">
+              <div className="space-y-3">
+                <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Name *</label><input placeholder="Child's name" value={childForm.name} onChange={e => setChildForm({...childForm, name: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Age</label><input placeholder="e.g., 2 years" value={childForm.age} onChange={e => setChildForm({...childForm, age: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
+                  <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Birthday</label><input placeholder="MM/DD/YYYY" value={childForm.birthday} onChange={e => setChildForm({...childForm, birthday: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
+                </div>
+                <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Allergies</label><input placeholder="Any food or environmental allergies" value={childForm.allergies} onChange={e => setChildForm({...childForm, allergies: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
+                <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Parent/Guardian Name</label><input placeholder="Parent's full name" value={childForm.parentName} onChange={e => setChildForm({...childForm, parentName: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Parent Email</label><input placeholder="email@example.com" value={childForm.parentEmail} onChange={e => setChildForm({...childForm, parentEmail: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
+                  <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Parent Phone</label><input placeholder="(555) 555-5555" value={childForm.parentPhone} onChange={e => setChildForm({...childForm, parentPhone: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
+                </div>
+                <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Notes</label><textarea placeholder="Nap schedule, routines, preferences, etc." value={childForm.notes} onChange={e => setChildForm({...childForm, notes: e.target.value})} className="w-full px-3 py-2 rounded-lg border h-20" style={{borderColor: c.sand}} /></div>
+              </div>
+              <div className="flex gap-2 mt-4">
                 <button onClick={saveChild} className="flex-1 py-2 rounded-lg font-semibold" style={{backgroundColor: c.terra, color: 'white'}}>Save</button>
                 <button onClick={() => { setShowChildForm(false); setEditingChild(null); }} className="px-4 py-2 rounded-lg" style={{backgroundColor: c.sand, color: c.wood}}>Cancel</button>
               </div>
@@ -1110,13 +1120,15 @@ const App = () => {
           {showMilestoneForm && (
             <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
               <h3 className="font-semibold mb-3" style={{color: c.wood}}>Record Milestone</h3>
-              <input placeholder="Milestone (e.g., First steps, Said 'mama')" value={milestoneForm.title} onChange={e => setMilestoneForm({...milestoneForm, title: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-2" style={{borderColor: c.sand}} />
-              <select value={milestoneForm.childId} onChange={e => setMilestoneForm({...milestoneForm, childId: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-2" style={{borderColor: c.sand}}>
+              <div className="space-y-3">
+                <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Milestone *</label><input placeholder="e.g., First steps, Said 'mama', Stacked 3 blocks" value={milestoneForm.title} onChange={e => setMilestoneForm({...milestoneForm, title: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
+                <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Child</label><select value={milestoneForm.childId} onChange={e => setMilestoneForm({...milestoneForm, childId: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}}>
                 <option value="">Select Child</option>
                 {children.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-              </select>
-              <textarea placeholder="Notes (optional)" value={milestoneForm.notes} onChange={e => setMilestoneForm({...milestoneForm, notes: e.target.value})} className="w-full px-3 py-2 rounded-lg border mb-3 h-20" style={{borderColor: c.sand}} />
-              <div className="flex gap-2">
+              </select></div>
+                <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Notes</label><textarea placeholder="Context, observations, how it happened" value={milestoneForm.notes} onChange={e => setMilestoneForm({...milestoneForm, notes: e.target.value})} className="w-full px-3 py-2 rounded-lg border h-20" style={{borderColor: c.sand}} /></div>
+              </div>
+              <div className="flex gap-2 mt-4">
                 <button onClick={saveMilestone} className="flex-1 py-2 rounded-lg font-semibold" style={{backgroundColor: c.terra, color: 'white'}}>Save</button>
                 <button onClick={() => setShowMilestoneForm(false)} className="px-4 py-2 rounded-lg" style={{backgroundColor: c.sand, color: c.wood}}>Cancel</button>
               </div>
