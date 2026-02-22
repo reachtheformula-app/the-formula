@@ -164,26 +164,25 @@ const App = () => {
       };
     };
 
-    netlifyIdentity.on('init', (user) => {
+    netlifyIdentity.on('init', async (user) => {
       if (user) {
         const mapped = mapUser(user);
         setCurrentUser(mapped);
         setIsAuthenticated(true);
-        setSubscription(prev => ({ ...prev, loading: true }));
-        checkSubscription(mapped.id);
+        await checkSubscription(mapped.id);
         load(mapped);
       } else {
         setSubscription(prev => ({ ...prev, loading: false }));
+        setSubscriptionChecked(true);
       }
       setAuthReady(true);
     });
 
-    netlifyIdentity.on('login', (user) => {
+    netlifyIdentity.on('login', async (user) => {
       const mapped = mapUser(user);
       setCurrentUser(mapped);
       setIsAuthenticated(true);
-      setSubscription(prev => ({ ...prev, loading: true }));
-      checkSubscription(mapped.id);
+      await checkSubscription(mapped.id);
       load(mapped);
       netlifyIdentity.close();
     });
