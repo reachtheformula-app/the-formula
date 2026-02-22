@@ -1199,7 +1199,7 @@ Write 250-400 words in The Formula voice.`;
           <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
             <label className="text-sm font-medium block mb-1" style={{color: c.wood}}>How was the day?</label>
             <p className="text-xs mb-2" style={{color: c.bark}}>Optional — jot down what you did, funny moments, how the kids reacted. The more detail, the better the letter.</p>
-            <textarea value={letterNotes} onChange={e => setLetterNotes(e.target.value)} placeholder="e.g., We started with circle time and talked about healthy foods. Cora tried broccoli for the first time and made the funniest face! Then we did a sorting activity with plastic fruits..." className="w-full px-3 py-2 rounded-lg border h-28 text-sm" style={{borderColor: c.sand}} />
+            <textarea value={letterNotes} onChange={e => setLetterNotes(e.target.value)} placeholder='e.g., We started with circle time and talked about healthy foods. "Child" tried broccoli for the first time and made the funniest face! Then we did a sorting activity with plastic fruits...' className="w-full px-3 py-2 rounded-lg border h-28 text-sm" style={{borderColor: c.sand}} />
           </div>
           <div className="flex gap-2 mb-4">
             <button onClick={generateAILetter} disabled={isGeneratingLetter} className="flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 disabled:opacity-50" style={{backgroundColor: c.terra, color: 'white'}}>
