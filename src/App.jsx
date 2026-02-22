@@ -430,11 +430,28 @@ const App = () => {
     const tl = getTodayLogs();
     const childNames = children.length > 0 ? children.map(ch => ch.name).join(', ') : 'your little one';
     const dayDataForLetter = w.hasRichData && w.days ? w.days[selectedDay] : null;
-    const todaysActivities = tl.length > 0 ? tl.map(l => `${fmtTime(l.timestamp)} - ${l.activity}${l.notes ? `: ${l.notes}` : ''}`).join('\n') : 'Standard curriculum activities';
-    const photosDescription = tl.filter(l => l.photos?.length > 0).length > 0 ? `\n\nNote: ${tl.filter(l => l.photos?.length > 0).reduce((acc, l) => acc + (l.photos?.length || 0), 0)} photos were captured today.` : '';
+    const todaysActivities = tl.length > 0 ? tl.map(l => `${fmtTime(l.timestamp)} - ${l.activity}${l.notes ? `: ${l.notes}` : ''}`).join('\n') : '';
+    const photosDescription = tl.filter(l => l.photos?.length > 0).length > 0 ? `\nPhotos captured: ${tl.filter(l => l.photos?.length > 0).reduce((acc, l) => acc + (l.photos?.length || 0), 0)}` : '';
     const langLabel = getLanguageLabel();
     const languageNote = langLabel && dayDataForLetter?.frenchWord ? `${langLabel} word of the day: ${dayDataForLetter.frenchWord}.` : '';
     const extraNotes = letterNotes.trim() ? `\n\nADDITIONAL CONTEXT FROM CAREGIVER (use this heavily — it contains the real details, moments, and flow of the day):\n${letterNotes.trim()}` : '';
+    
+    // Build lesson plan summary from selected day's curriculum data
+    let lessonPlanSection = '';
+    if (dayDataForLetter) {
+      const parts = [];
+      if (dayDataForLetter.focus) parts.push(`Focus: ${dayDataForLetter.focus}`);
+      if (dayDataForLetter.qotd) parts.push(`Question of the Day: ${dayDataForLetter.qotd}`);
+      if (dayDataForLetter.circleTime) parts.push(`Circle Time: ${dayDataForLetter.circleTime.substring(0, 500)}`);
+      if (dayDataForLetter.songTitle) parts.push(`Song: ${dayDataForLetter.songTitle}`);
+      if (dayDataForLetter.learningStations?.length > 0) parts.push(`Learning Stations:\n${dayDataForLetter.learningStations.map((s, i) => `${i + 1}. ${s}`).join('\n')}`);
+      if (dayDataForLetter.outsideTime) parts.push(`Outside Time: ${dayDataForLetter.outsideTime}`);
+      if (dayDataForLetter.indoorMovement) parts.push(`Indoor Movement: ${dayDataForLetter.indoorMovement}`);
+      if (parts.length > 0) lessonPlanSection = `\n\nTODAY'S LESSON PLAN (reference these activities in the letter — the caregiver followed this plan):\n${parts.join('\n')}`;
+    }
+
+    // Use selected day name, not today's actual date
+    const selectedDayName = dayNames[selectedDay] || 'today';
     const prompt = `You are writing a daily parent letter in The Formula's signature voice. Study these style rules carefully:
 
 VOICE & STYLE:
@@ -473,13 +490,12 @@ PRIORITY: If the caregiver provided additional context below, treat it as the pr
 
 NOW WRITE THE LETTER:
 Children: ${childNames}
-Date: ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+Day: ${selectedDayName}
 Theme: "${w.theme}"
-${dayDataForLetter ? `Focus: ${dayDataForLetter.focus}` : ''}
-${languageNote}
-Activities logged: ${todaysActivities}${photosDescription}${extraNotes}
+${languageNote}${lessonPlanSection}
+${todaysActivities ? `\nActivity logs: ${todaysActivities}${photosDescription}` : ''}${extraNotes}
 
-Write in The Formula voice. Only describe what was actually reported — do not invent details. If minimal info was provided, write a shorter letter (150-250 words). If detailed notes were provided, write up to 400 words.`;
+Write in The Formula voice. Only describe what was actually reported in the lesson plan, activity logs, or caregiver notes — do not invent details. If minimal info was provided, write a shorter letter (150-250 words). If detailed notes were provided, write up to 400 words.`;
     try {
       const response = await fetch("/.netlify/functions/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }) });
       const data = await response.json();
