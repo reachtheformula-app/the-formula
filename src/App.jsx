@@ -167,9 +167,13 @@ const App = () => {
     };
 
     netlifyIdentity.on('init', (user) => {
-      console.log('[INIT] fired, user:', user ? user.id : 'null');
+      console.log('[INIT] full user object:', JSON.stringify(user, null, 2));
+      console.log('[INIT] user?.id:', user?.id);
+      console.log('[INIT] user?.token?.user?.id:', user?.token?.user?.id);
+      console.log('[INIT] user keys:', user ? Object.keys(user) : 'null');
       if (user) {
         const mapped = mapUser(user);
+        console.log('[INIT] mapped:', JSON.stringify(mapped));
         setCurrentUser(mapped);
         setIsAuthenticated(true);
         checkSubscription(mapped.id);
@@ -182,8 +186,12 @@ const App = () => {
     });
 
     netlifyIdentity.on('login', (user) => {
-      console.log('[LOGIN] fired, user:', user ? user.id : 'null');
+      console.log('[LOGIN] full user object:', JSON.stringify(user, null, 2));
+      console.log('[LOGIN] user?.id:', user?.id);
+      console.log('[LOGIN] user?.token?.user?.id:', user?.token?.user?.id);
+      console.log('[LOGIN] user keys:', user ? Object.keys(user) : 'null');
       const mapped = mapUser(user);
+      console.log('[LOGIN] mapped:', JSON.stringify(mapped));
       setCurrentUser(mapped);
       setSubscription({ tier: 'none', status: 'inactive', isAgency: false, loading: true });
       setSubscriptionChecked(false);
