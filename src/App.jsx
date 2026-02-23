@@ -67,7 +67,7 @@ const App = () => {
   const fileInputRef = useRef(null);
   
   const emptyDay = { focusOfDay: '', questionOfDay: '', circleTime: '', songOfDay: { title: '', link: '' }, morningActivities: [''], lunch: '', afternoonActivities: [''], vocabWord: '', teacherTips: [], outsideTime: '', indoorMovement: '' };
-  const [newWeek, setNewWeek] = useState({ theme: '', season: '', focus: '', daysToInclude: [1,1,1,1,1,0,0], days: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(n => ({ name: n, activities: {...emptyDay} })) });
+  const [newWeek, setNewWeek] = useState({ theme: '', season: '', focus: '', aiGenerated: false, daysToInclude: [1,1,1,1,1,0,0], days: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(n => ({ name: n, activities: {...emptyDay} })) });
   
   const c = { cream: '#ecddce', sand: '#d0bfa3', dune: '#c9af97', terra: '#be8a68', bark: '#926f4a', wood: '#774722' };
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -314,6 +314,7 @@ const App = () => {
           const dbWeeks = rows.map(r => ({
             id: r.id, theme: r.theme, season: r.season, focus: r.focus, ages: r.age_group,
             isCustom: true, hasRichData: true, teachingPhilosophy: r.teaching_philosophy || '',
+            createdAt: r.created_at, aiGenerated: r.ai_generated || false,
             days: typeof r.days === 'string' ? JSON.parse(r.days) : r.days,
             activities: (() => {
               const days = typeof r.days === 'string' ? JSON.parse(r.days) : r.days;
@@ -545,16 +546,16 @@ const App = () => {
     const dayNameFull = { 'Mon': 'Monday', 'Tue': 'Tuesday', 'Wed': 'Wednesday', 'Thu': 'Thursday', 'Fri': 'Friday', 'Sat': 'Saturday', 'Sun': 'Sunday' };
     const richDays = newWeek.days.filter((_, i) => newWeek.daysToInclude[i]).map(d => ({ name: dayNameFull[d.name] || d.name, frenchWord: d.activities.vocabWord || '', focus: d.activities.focusOfDay || '', qotd: d.activities.questionOfDay || '', circleTime: d.activities.circleTime || '', songTitle: d.activities.songOfDay?.title || '', songLink: d.activities.songOfDay?.link || '', learningStations: [...(d.activities.morningActivities || []), ...(d.activities.afternoonActivities || [])].filter(a => a), teacherTips: d.activities.teacherTips || [], outsideTime: d.activities.outsideTime || '', indoorMovement: d.activities.indoorMovement || '', lunch: d.activities.lunch || '' }));
     try {
-      const resp = await fetch('/.netlify/functions/user-weeks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: currentUser.id, userEmail: currentUser.email, userName: currentUser.name, theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ageGroup: weekAgeGroup, teachingPhilosophy: newWeek.teachingPhilosophy || '', days: richDays }) });
+      const resp = await fetch('/.netlify/functions/user-weeks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: currentUser.id, userEmail: currentUser.email, userName: currentUser.name, theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ageGroup: weekAgeGroup, teachingPhilosophy: newWeek.teachingPhilosophy || '', aiGenerated: newWeek.aiGenerated || false, days: richDays }) });
       const saved = await resp.json();
-      const w = { id: saved.id, theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ages: weekAgeGroup, isCustom: true, hasRichData: richDays.length > 0, teachingPhilosophy: newWeek.teachingPhilosophy || '', days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
+      const w = { id: saved.id, theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ages: weekAgeGroup, isCustom: true, hasRichData: richDays.length > 0, teachingPhilosophy: newWeek.teachingPhilosophy || '', aiGenerated: true, createdAt: saved.created_at || new Date().toISOString(), days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
       setCustomWeeks(prev => [...prev, w]);
     } catch (err) {
       console.error('Failed to save week to database:', err);
-      const w = { id: Date.now(), theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ages: weekAgeGroup, isCustom: true, hasRichData: true, teachingPhilosophy: newWeek.teachingPhilosophy || '', days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
+      const w = { id: Date.now(), theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ages: weekAgeGroup, isCustom: true, hasRichData: true, teachingPhilosophy: newWeek.teachingPhilosophy || '', aiGenerated: newWeek.aiGenerated || false, createdAt: new Date().toISOString(), days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
       const n = [...customWeeks, w]; setCustomWeeks(n); save('fw', n);
     }
-    setNewWeek({ theme: '', season: '', focus: '', daysToInclude: [1,1,1,1,1,0,0], days: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => ({ name: x, activities: {...emptyDay} })) });
+    setNewWeek({ theme: '', season: '', focus: '', aiGenerated: false, daysToInclude: [1,1,1,1,1,0,0], days: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => ({ name: x, activities: {...emptyDay} })) });
     setDayIdx(0); navigateTo('weeklyThemes');
   };
   const delCustomWeek = async (id) => { if (!window.confirm('Delete this custom week? This cannot be undone.')) return; setCustomWeeks(prev => prev.filter(w => w.id !== id)); try { await fetch(`/.netlify/functions/user-weeks?id=${id}&userId=${currentUser.id}`, { method: 'DELETE' }); } catch (err) { console.error('Failed to delete week from database:', err); } };
@@ -657,8 +658,21 @@ Write in The Formula voice. Only describe what was actually reported in the less
     setLetter(`${childNames} had such a wonderful morning today as we continued exploring "${w.theme}"! We started the day with ${activities}.${languageNote}${extra}\n\nIt was great to see everyone so engaged and having fun while learning. Stay tuned for what's in store tomorrow!\n\nLearning & Development Note:\nToday's activities supported a range of developmental areas including creativity, social skills, and early learning concepts — all through the power of play.\n\n[Your Name]`);
   };
 
+  const MONTHLY_WEEK_LIMIT = 20;
+  const isAdmin = currentUser?.id === '694851cf-da84-4f15-bbd8-597cd00f16e5';
+  const getMonthlyWeekCount = () => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    return customWeeks.filter(w => w.aiGenerated && w.createdAt && new Date(w.createdAt) >= monthStart).length;
+  };
+  const monthlyWeeksRemaining = isAdmin ? Infinity : MONTHLY_WEEK_LIMIT - getMonthlyWeekCount();
+
   const generateAIWeek = async () => {
     if (!weekTopic.trim()) return;
+    if (monthlyWeeksRemaining <= 0) {
+      alert(`You've reached your limit of ${MONTHLY_WEEK_LIMIT} custom weeks this month. Your limit resets at the start of next month.`);
+      return;
+    }
     setIsGeneratingWeek(true);
     const daysToGen = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].filter((_, i) => newWeek.daysToInclude[i]);
     const langLabel = getLanguageLabel();
@@ -690,7 +704,7 @@ Write in The Formula voice. Only describe what was actually reported in the less
         if (genDay) { const rawSongTitle = genDay.songTitle || ''; const songTitle = (rawSongTitle === 'SEARCH' || rawSongTitle === 'Real song') ? '' : rawSongTitle; const songSearchLink = songTitle ? 'https://www.youtube.com/results?search_query=' + encodeURIComponent(songTitle + ' kids song') : ''; return { name: shortName, activities: { focusOfDay: genDay.focusOfDay || genDay.focus || '', questionOfDay: genDay.questionOfDay || genDay.qotd || '', circleTime: genDay.circleTime || '', songOfDay: { title: songTitle, link: songSearchLink }, morningActivities: genDay.morningActivities || genDay.learningStations || [''], lunch: genDay.lunch || '', afternoonActivities: genDay.afternoonActivities || [''], vocabWord: genDay.vocabWord || '', teacherTips: genDay.teacherTips || [], outsideTime: genDay.outsideTime || '', indoorMovement: genDay.indoorMovement || '' }}; }
         return { name: shortName, activities: {...emptyDay} };
       });
-      setNewWeek(prev => ({ ...prev, theme: firstParsed.theme || weekTopic, season: firstParsed.season || 'Any', focus: firstParsed.focus || 'General', teachingPhilosophy: firstParsed.teachingPhilosophy || '', days: newDays }));
+      setNewWeek(prev => ({ ...prev, theme: firstParsed.theme || weekTopic, season: firstParsed.season || 'Any', focus: firstParsed.focus || 'General', teachingPhilosophy: firstParsed.teachingPhilosophy || '', aiGenerated: true, days: newDays }));
       setWeekTopic('');
     } catch (error) { console.error('AI Week Generation Error:', error); alert('Failed to generate curriculum. Please try again or fill in manually.'); }
     finally { setIsGeneratingWeek(false); }
@@ -1510,7 +1524,8 @@ Write in The Formula voice. Only describe what was actually reported in the less
             </div>
             <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `2px solid ${c.terra}`}}>
               <div className="flex items-center gap-2 mb-3"><Sparkles className="w-5 h-5" style={{color: c.terra}} /><h3 className="font-semibold" style={{color: c.wood}}>Generate with AI</h3></div>
-              <p className="text-sm mb-3" style={{color: c.bark}}>Select an age group, enter a topic, and let AI create a full week's curriculum!</p>
+              <p className="text-sm mb-2" style={{color: c.bark}}>Select an age group, enter a topic, and let AI create a full week's curriculum!</p>
+              {!isAdmin && <p className="text-xs mb-3 font-medium" style={{color: monthlyWeeksRemaining <= 3 ? '#ef4444' : c.bark}}>{monthlyWeeksRemaining} of {MONTHLY_WEEK_LIMIT} custom weeks remaining this month</p>}
               <div className="flex gap-2 mb-3">
                 {['0-6m', '6m-1', '1-2', '2-3', '3-4', '4-5'].map(age => (
                   <button key={age} onClick={() => setWeekAgeGroup(age)} className="flex-1 py-2 rounded-lg text-sm font-medium" style={{backgroundColor: weekAgeGroup === age ? c.terra : c.sand, color: weekAgeGroup === age ? 'white' : c.wood}}>{age === '0-6m' ? '0–6m' : age === '6m-1' ? '6m–1yr' : age + ' yrs'}</button>
@@ -1518,7 +1533,7 @@ Write in The Formula voice. Only describe what was actually reported in the less
               </div>
               <div className="flex gap-2">
                 <input placeholder="e.g., Butterflies, Space, Cooking, Kindness..." value={weekTopic} onChange={e => setWeekTopic(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} onKeyDown={e => e.key === 'Enter' && !isGeneratingWeek && weekTopic.trim() && generateAIWeek()} />
-                <button onClick={generateAIWeek} disabled={isGeneratingWeek || !weekTopic.trim()} className="px-4 py-2 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50" style={{backgroundColor: c.terra, color: 'white'}}>
+                <button onClick={generateAIWeek} disabled={isGeneratingWeek || !weekTopic.trim() || monthlyWeeksRemaining <= 0} className="px-4 py-2 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50" style={{backgroundColor: c.terra, color: 'white'}}>
                   {isGeneratingWeek ? <><Loader className="w-4 h-4 animate-spin" />...</> : <><Sparkles className="w-4 h-4" />Generate</>}
                 </button>
               </div>
