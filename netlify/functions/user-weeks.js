@@ -47,15 +47,15 @@ export default async (request, context) => {
     // POST — Save a new custom week
     if (request.method === 'POST') {
       const body = await request.json();
-      const { userId, userEmail, userName, theme, season, focus, ageGroup, teachingPhilosophy, days } = body;
+      const { userId, userEmail, userName, theme, season, focus, ageGroup, teachingPhilosophy, aiGenerated, days } = body;
 
       if (!userId || !theme || !days) {
         return new Response(JSON.stringify({ error: 'userId, theme, and days required' }), { status: 400, headers });
       }
 
       const row = await sql`
-        INSERT INTO user_weeks (user_id, user_email, user_name, theme, season, focus, age_group, teaching_philosophy, days)
-        VALUES (${userId}, ${userEmail || null}, ${userName || null}, ${theme}, ${season || 'Any'}, ${focus || 'General'}, ${ageGroup || null}, ${teachingPhilosophy || null}, ${JSON.stringify(days)})
+        INSERT INTO user_weeks (user_id, user_email, user_name, theme, season, focus, age_group, teaching_philosophy, ai_generated, days)
+        VALUES (${userId}, ${userEmail || null}, ${userName || null}, ${theme}, ${season || 'Any'}, ${focus || 'General'}, ${ageGroup || null}, ${teachingPhilosophy || null}, ${aiGenerated || false}, ${JSON.stringify(days)})
         RETURNING *
       `;
       return new Response(JSON.stringify(row[0]), { status: 201, headers });
