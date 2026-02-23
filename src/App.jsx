@@ -21,6 +21,7 @@ const App = () => {
   const [customWeeks, setCustomWeeks] = useState([]);
   const [weeks, setWeeks] = useState([]);
   const [loadingWeeks, setLoadingWeeks] = useState(true);
+  const [pendingWeekId, setPendingWeekId] = useState(null);
   const [children, setChildren] = useState([]);
   const [logs, setLogs] = useState([]);
   const [milestones, setMilestones] = useState([]);
@@ -268,6 +269,16 @@ const App = () => {
       .catch(err => { console.error('Failed to load curriculum:', err); setLoadingWeeks(false); });
   }, []);
 
+  // Apply saved week selection once all weeks are loaded
+  useEffect(() => {
+    if (!pendingWeekId) return;
+    const allWeeks = [...weeks, ...customWeeks];
+    if (allWeeks.length === 0) return;
+    const wId = isNaN(pendingWeekId) ? pendingWeekId : parseInt(pendingWeekId);
+    const w = allWeeks.find(x => x.id === wId);
+    if (w) { setSelectedWeek(w); setPendingWeekId(null); }
+  }, [weeks, customWeeks, pendingWeekId]);
+
   const handleLogout = () => {
     const netlifyIdentity = window.netlifyIdentity;
     if (netlifyIdentity) {
@@ -361,9 +372,7 @@ const App = () => {
       .then(res => res.json())
       .then(data => {
         if (data.selected_week_id) {
-          const wId = isNaN(data.selected_week_id) ? data.selected_week_id : parseInt(data.selected_week_id);
-          const w = [...weeks].find(x => x.id === wId);
-          if (w) setSelectedWeek(w);
+          setPendingWeekId(data.selected_week_id);
         }
         setLanguageSetting(data.language || 'none');
         setCustomLanguageName(data.custom_language_name || '');
