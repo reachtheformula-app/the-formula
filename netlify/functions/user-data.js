@@ -40,7 +40,13 @@ export default async (request, context) => {
         rows = await sql`SELECT * FROM milestones WHERE user_id = ${userId} ORDER BY date DESC`;
       } else if (type === 'settings') {
         rows = await sql`SELECT * FROM user_settings WHERE user_id = ${userId}`;
-        return new Response(JSON.stringify(rows[0] || { selected_week_id: null, language: 'none', custom_language_name: '' }), { status: 200, headers });
+        return new Response(JSON.stringify(rows[0] || {
+          selected_week_id: null,
+          language: 'none',
+          custom_language_name: '',
+          onboarding_complete: false,
+          goals: []
+        }), { status: 200, headers });
       } else {
         rows = await sql`SELECT * FROM activity_logs WHERE user_id = ${userId} ORDER BY timestamp DESC`;
       }
@@ -77,13 +83,16 @@ export default async (request, context) => {
       }
 
       if (type === 'settings') {
+        const goalsArray = body.goals || [];
         await sql`
-          INSERT INTO user_settings (user_id, selected_week_id, language, custom_language_name, updated_at)
-          VALUES (${userId}, ${body.selectedWeekId || null}, ${body.language || 'none'}, ${body.customLanguageName || ''}, NOW())
+          INSERT INTO user_settings (user_id, selected_week_id, language, custom_language_name, onboarding_complete, goals, updated_at)
+          VALUES (${userId}, ${body.selectedWeekId || null}, ${body.language || 'none'}, ${body.customLanguageName || ''}, ${body.onboardingComplete || false}, ${goalsArray}, NOW())
           ON CONFLICT (user_id) DO UPDATE SET
-            selected_week_id = ${body.selectedWeekId || null},
-            language = ${body.language || 'none'},
-            custom_language_name = ${body.customLanguageName || ''},
+            selected_week_id = COALESCE(${body.selectedWeekId}, user_settings.selected_week_id),
+            language = COALESCE(${body.language}, user_settings.language),
+            custom_language_name = COALESCE(${body.customLanguageName}, user_settings.custom_language_name),
+            onboarding_complete = COALESCE(${body.onboardingComplete}, user_settings.onboarding_complete),
+            goals = CASE WHEN ${body.goals !== undefined} THEN ${goalsArray} ELSE user_settings.goals END,
             updated_at = NOW()`;
         return new Response(JSON.stringify({ success: true }), { status: 200, headers });
       }
