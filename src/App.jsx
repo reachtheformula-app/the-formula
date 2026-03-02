@@ -69,7 +69,17 @@ const App = () => {
       window.scrollTo(0, 0);
     }, 150);
   };
-  const [weekAgeGroup, setWeekAgeGroup] = useState('2-3');
+  const [weekAgeGroup, setWeekAgeGroup] = useState(['2-3']);
+  const toggleAgeGroup = (age) => {
+    setWeekAgeGroup(prev => {
+      if (prev.includes(age)) {
+        // Don't allow deselecting all — keep at least one
+        if (prev.length === 1) return prev;
+        return prev.filter(a => a !== age);
+      }
+      return [...prev, age];
+    });
+  };
   const [billingCycle, setBillingCycle] = useState('monthly');
   const fileInputRef = useRef(null);
   
@@ -600,13 +610,13 @@ const App = () => {
     const dayNameFull = { 'Mon': 'Monday', 'Tue': 'Tuesday', 'Wed': 'Wednesday', 'Thu': 'Thursday', 'Fri': 'Friday', 'Sat': 'Saturday', 'Sun': 'Sunday' };
     const richDays = newWeek.days.filter((_, i) => newWeek.daysToInclude[i]).map(d => ({ name: dayNameFull[d.name] || d.name, frenchWord: d.activities.vocabWord || '', focus: d.activities.focusOfDay || '', qotd: d.activities.questionOfDay || '', circleTime: d.activities.circleTime || '', songTitle: d.activities.songOfDay?.title || '', songLink: d.activities.songOfDay?.link || '', learningStations: [...(d.activities.morningActivities || []), ...(d.activities.afternoonActivities || [])].filter(a => a), teacherTips: d.activities.teacherTips || [], outsideTime: d.activities.outsideTime || '', indoorMovement: d.activities.indoorMovement || '', lunch: d.activities.lunch || '' }));
     try {
-      const resp = await fetch('/.netlify/functions/user-weeks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: currentUser.id, userEmail: currentUser.email, userName: currentUser.name, theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ageGroup: weekAgeGroup, teachingPhilosophy: newWeek.teachingPhilosophy || '', aiGenerated: newWeek.aiGenerated || false, days: richDays }) });
+      const resp = await fetch('/.netlify/functions/user-weeks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: currentUser.id, userEmail: currentUser.email, userName: currentUser.name, theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ageGroup: weekAgeGroup.join(','), teachingPhilosophy: newWeek.teachingPhilosophy || '', aiGenerated: newWeek.aiGenerated || false, days: richDays }) });
       const saved = await resp.json();
       const w = { id: saved.id, theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ages: weekAgeGroup, isCustom: true, hasRichData: richDays.length > 0, teachingPhilosophy: newWeek.teachingPhilosophy || '', aiGenerated: true, createdAt: saved.created_at || new Date().toISOString(), days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
       setCustomWeeks(prev => [...prev, w]);
     } catch (err) {
       console.error('Failed to save week to database:', err);
-      const w = { id: Date.now(), theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ages: weekAgeGroup, isCustom: true, hasRichData: true, teachingPhilosophy: newWeek.teachingPhilosophy || '', aiGenerated: newWeek.aiGenerated || false, createdAt: new Date().toISOString(), days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
+      const w = { id: Date.now(), theme: newWeek.theme, season: newWeek.season, focus: newWeek.focus, ages: weekAgeGroup.join(','), isCustom: true, hasRichData: true, teachingPhilosophy: newWeek.teachingPhilosophy || '', aiGenerated: newWeek.aiGenerated || false, createdAt: new Date().toISOString(), days: richDays, activities: { circleTime: newWeek.days[0].activities.circleTime, songOfDay: newWeek.days[0].activities.songOfDay, morningActivity: newWeek.days[0].activities.morningActivities.join(', '), lunch: newWeek.days[0].activities.lunch, afternoonActivity: newWeek.days[0].activities.afternoonActivities.join(', ') }};
       const n = [...customWeeks, w]; setCustomWeeks(n); save('fw', n);
     }
     setNewWeek({ theme: '', season: '', focus: '', aiGenerated: false, daysToInclude: [1,1,1,1,1,0,0], days: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x => ({ name: x, activities: {...emptyDay} })) });
@@ -732,8 +742,15 @@ Write in The Formula voice. Only describe what was actually reported in the less
     const langLabel = getLanguageLabel();
     const langInstruction = langLabel ? `Include a ${langLabel} vocabulary word with pronunciation guide.` : '';
     const ageDescriptions = { '0-6m': 'infants (0-6 months)', '6m-1': 'infants (6-12 months)', '1-2': 'toddlers (1-2 years)', '2-3': 'toddlers (2-3 years)', '3-4': 'preschoolers (3-4 years)', '4-5': 'pre-K children (4-5 years)' };
+    const isMixedAge = weekAgeGroup.length > 1;
+    const ageGroupLabel = isMixedAge
+      ? `a mixed-age group including ${weekAgeGroup.map(a => ageDescriptions[a]).join(' and ')}`
+      : ageDescriptions[weekAgeGroup[0]];
+    const mixedAgeInstruction = isMixedAge
+      ? `\n\nCRITICAL — MIXED-AGE GROUP: You are planning for children of different ages together. For EVERY learning station, provide age-specific adaptations. Format each station like this:\n"Station Name — [description of the activity and materials]\n• For ${weekAgeGroup.map(a => ageDescriptions[a]).join(': [specific adaptation]\\n• For ')}: [specific adaptation]"\nThe circle time script should also note where to adjust for younger vs older children. Teacher tips should include mixed-age management strategies.`
+      : '';
     try {
-      const firstPrompt = `Generate a curriculum week about "${weekTopic}" for ${ageDescriptions[weekAgeGroup]}. ${langInstruction}\n\nReturn ONLY JSON for the theme overview AND ${daysToGen[0]} only:\n{"theme":"Creative name","season":"Any|Spring|Summer|Fall|Winter","focus":"Focus area","teachingPhilosophy":"150-250 word philosophy for this topic and age group","days":[{"name":"${daysToGen[0]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"2-5 word phrase related to ${weekTopic} (app appends 'kids song' for YouTube search)","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}]}`;
+      const firstPrompt = `Generate a curriculum week about "${weekTopic}" for ${ageGroupLabel}.${mixedAgeInstruction} ${langInstruction}\n\nReturn ONLY JSON for the theme overview AND ${daysToGen[0]} only:\n{"theme":"Creative name","season":"Any|Spring|Summer|Fall|Winter","focus":"Focus area","teachingPhilosophy":"150-250 word philosophy for this topic and age group","days":[{"name":"${daysToGen[0]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"2-5 word phrase related to ${weekTopic} (app appends 'kids song' for YouTube search)","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}]}`;
       const firstResp = await fetch("/api/generate-curriculum", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4000, messages: [{ role: "user", content: firstPrompt }] }) });
       if (!firstResp.ok) throw new Error('Server error ' + firstResp.status);
       const firstData = await firstResp.json();
@@ -744,7 +761,7 @@ Write in The Formula voice. Only describe what was actually reported in the less
       let allDays = [...firstParsed.days];
       for (let i = 1; i < daysToGen.length; i++) {
         const prevDaySummaries = allDays.map(d => `${d.name}: Focus="${d.focus}", Song="${d.songTitle}", Stations=[${(d.learningStations||[]).map(s => s.split(' - ')[0]).join(', ')}], Outside="${d.outsideTime}", Indoor="${d.indoorMovement}"`).join('\n');
-        const dayPrompt = `Continue the "${firstParsed.theme}" curriculum for ${ageDescriptions[weekAgeGroup]}.\n\nPREVIOUS DAYS (do NOT repeat any songs, stations, activities, or outside/indoor ideas from these):\n${prevDaySummaries}\n\nNow generate ${daysToGen[i]} ONLY. Every field must be DIFFERENT from previous days.${i === daysToGen.length - 1 ? ' This is the FINAL day of the week. Focus on revisiting favorite activities and key concepts from earlier in the week. Introduce one new element that ties the whole week together. Do NOT frame this as a party, celebration, or special event — treat it as a regular learning day with a reflective, connecting thread.' : ''} ${langInstruction}\n\nReturn ONLY JSON for this single day:\n{"name":"${daysToGen[i]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"2-5 word phrase related to ${firstParsed.theme} (app appends 'kids song' for YouTube search)","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}`;
+        const dayPrompt = `Continue the "${firstParsed.theme}" curriculum for ${ageGroupLabel}.${mixedAgeInstruction}\n\nPREVIOUS DAYS (do NOT repeat any songs, stations, activities, or outside/indoor ideas from these):\n${prevDaySummaries}\n\nNow generate ${daysToGen[i]} ONLY. Every field must be DIFFERENT from previous days.${i === daysToGen.length - 1 ? ' This is the FINAL day of the week. Focus on revisiting favorite activities and key concepts from earlier in the week. Introduce one new element that ties the whole week together. Do NOT frame this as a party, celebration, or special event — treat it as a regular learning day with a reflective, connecting thread.' : ''} ${langInstruction}\n\nReturn ONLY JSON for this single day:\n{"name":"${daysToGen[i]}","focus":"Sub-topic","qotd":"Question","circleTime":"Full 300-500 word circle time script with interactive prompts","songTitle":"2-5 word phrase related to ${firstParsed.theme} (app appends 'kids song' for YouTube search)","learningStations":["Station 1 with materials and guiding question","Station 2","Station 3"],"teacherTips":["Tip 1","Tip 2","Tip 3","Tip 4","Tip 5","Tip 6"],"outsideTime":"Outdoor suggestion","indoorMovement":"Indoor movement alternative"}`;
         const dayResp = await fetch("/api/generate-curriculum", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, messages: [{ role: "user", content: dayPrompt }] }) });
         if (!dayResp.ok) throw new Error('Server error on day ' + daysToGen[i]);
         const dayData = await dayResp.json();
@@ -1755,8 +1772,13 @@ Write in The Formula voice. Only describe what was actually reported in the less
               {!isAdmin && <p className="text-xs mb-3 font-medium" style={{color: monthlyWeeksRemaining <= 3 ? '#ef4444' : c.bark}}>{monthlyWeeksRemaining} of {MONTHLY_WEEK_LIMIT} custom weeks remaining this month</p>}
               <div className="flex gap-2 mb-3">
                 {['0-6m', '6m-1', '1-2', '2-3', '3-4', '4-5'].map(age => (
-                  <button key={age} onClick={() => setWeekAgeGroup(age)} className="flex-1 py-2 rounded-lg text-sm font-medium" style={{backgroundColor: weekAgeGroup === age ? c.terra : c.sand, color: weekAgeGroup === age ? 'white' : c.wood}}>{age === '0-6m' ? '0–6m' : age === '6m-1' ? '6m–1yr' : age + ' yrs'}</button>
+                  <button key={age} onClick={() => toggleAgeGroup(age)} className="flex-1 py-2 rounded-lg text-sm font-medium" style={{backgroundColor: weekAgeGroup.includes(age) ? c.terra : c.sand, color: weekAgeGroup.includes(age) ? 'white' : c.wood}}>{age === '0-6m' ? '0–6m' : age === '6m-1' ? '6m–1yr' : age + ' yrs'}</button>
                 ))}
+              {weekAgeGroup.length > 1 && (
+                <p className="text-xs mt-2 font-medium" style={{color: c.terra}}>
+                  ✶ Multi-age: Activities will include adaptations for each age group
+                </p>
+              )}
               </div>
               <div className="flex gap-2">
                 <input placeholder="e.g., Butterflies, Space, Cooking, Kindness..." value={weekTopic} onChange={e => setWeekTopic(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} onKeyDown={e => e.key === 'Enter' && !isGeneratingWeek && weekTopic.trim() && generateAIWeek()} />
