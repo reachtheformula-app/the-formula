@@ -12,6 +12,13 @@ const App = () => {
   const [subscriptionChecked, setSubscriptionChecked] = useState(false);
   const [checkoutMessage, setCheckoutMessage] = useState(null);
 
+  // Onboarding state
+  const [onboardingComplete, setOnboardingComplete] = useState(null);
+  const [onboardingStep, setOnboardingStep] = useState(1);
+  const [onboardingChildren, setOnboardingChildren] = useState([{ name: '', birthday: '', ageRange: '', inputType: 'range' }]);
+  const [onboardingGoals, setOnboardingGoals] = useState([]);
+  const [onboardingSaving, setOnboardingSaving] = useState(false);
+
   // App state
   const [view, setView] = useState('dashboard');
   const [selectedWeek, setSelectedWeek] = useState(null);
@@ -249,6 +256,10 @@ const App = () => {
       setSelectedWeek(null);
       setView('dashboard');
       setCheckoutMessage(null);
+      setOnboardingComplete(null);
+      setOnboardingStep(1);
+      setOnboardingChildren([{ name: '', birthday: '', ageRange: '', inputType: 'range' }]);
+      setOnboardingGoals([]);
     });
 
     netlifyIdentity.init();
@@ -377,8 +388,9 @@ const App = () => {
         }
         setLanguageSetting(data.language || 'none');
         setCustomLanguageName(data.custom_language_name || '');
+        setOnboardingComplete(data.onboarding_complete || false);
       })
-      .catch(err => console.error('Failed to load settings:', err));
+      .catch(err => { console.error('Failed to load settings:', err); setOnboardingComplete(false); });
   };
 
   // ========== INFANT ROUTINES ==========
@@ -443,6 +455,48 @@ const App = () => {
   };
 
   const saveLanguageSettings = (lang, customName = '') => { setLanguageSetting(lang); setCustomLanguageName(customName); saveSettings({ language: lang, customLanguageName: customName }); };
+  // Onboarding helpers
+  const addOnboardingChild = () => {
+    setOnboardingChildren(prev => [...prev, { name: '', birthday: '', ageRange: '', inputType: 'range' }]);
+  };
+  const updateOnboardingChild = (index, field, value) => {
+    setOnboardingChildren(prev => prev.map((c, i) => i === index ? { ...c, [field]: value } : c));
+  };
+  const removeOnboardingChild = (index) => {
+    if (onboardingChildren.length <= 1) return;
+    setOnboardingChildren(prev => prev.filter((_, i) => i !== index));
+  };
+  const toggleOnboardingGoal = (goal) => {
+    setOnboardingGoals(prev => prev.includes(goal) ? prev.filter(g => g !== goal) : [...prev, goal]);
+  };
+  const completeOnboarding = async () => {
+    setOnboardingSaving(true);
+    try {
+      const savedChildren = [];
+      for (const child of onboardingChildren) {
+        if (!child.name.trim()) continue;
+        const age = child.inputType === 'range' ? child.ageRange : '';
+        const birthday = child.inputType === 'birthday' ? child.birthday : '';
+        const resp = await fetch(`/.netlify/functions/user-data?type=children&userId=${currentUser.id}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: child.name, age, birthday })
+        });
+        const newChild = await resp.json();
+        savedChildren.push({ name: child.name, age, birthday, id: newChild.id, allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '' });
+      }
+      setChildren(savedChildren);
+      await fetch(`/.netlify/functions/user-data?type=settings&userId=${currentUser.id}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ onboardingComplete: true, goals: onboardingGoals })
+      });
+      setOnboardingComplete(true);
+    } catch (err) {
+      console.error('Onboarding save error:', err);
+      alert('Something went wrong. Please try again.');
+    } finally {
+      setOnboardingSaving(false);
+    }
+  };
   const allSeasons = ['All', ...new Set(weeks.map(w => w.season))];
   const allFocusAreas = ['All', ...new Set(weeks.map(w => w.focus))];
 
@@ -871,7 +925,180 @@ Write in The Formula voice. Only describe what was actually reported in the less
       </div>
     </div>
   );
+// Onboarding — show if subscription active but onboarding not complete
+  if (hasGold() && subscriptionChecked && !subscription.loading && onboardingComplete === false) {
+    const goalOptions = [
+      { id: 'daily_activities', label: 'Daily activity ideas', icon: '🎨', desc: 'Age-appropriate activities ready to go' },
+      { id: 'structured_curriculum', label: 'Structured curriculum', icon: '📚', desc: 'Week-by-week learning themes' },
+      { id: 'milestones', label: 'Milestone tracking', icon: '📈', desc: 'Track developmental progress' },
+      { id: 'parent_letters', label: 'Parent communication', icon: '✉️', desc: 'Daily letters home to families' },
+      { id: 'language_learning', label: 'Language learning', icon: '🌍', desc: 'Introduce a second language' },
+      { id: 'new_caregiver', label: 'New caregiver support', icon: '🤝', desc: "I'm new to childcare and want guidance" },
+    ];
+    const hasValidChild = onboardingChildren.some(c => c.name.trim());
 
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" style={{backgroundColor: c.cream, fontFamily: 'Quicksand, sans-serif'}}>
+        <div className="w-full max-w-md">
+
+          {/* Progress dots */}
+          <div className="flex justify-center gap-2 mb-6">
+            {[1, 2, 3].map(step => (
+              <div key={step} className="w-2.5 h-2.5 rounded-full transition-all" style={{
+                backgroundColor: onboardingStep === step ? c.terra : onboardingStep > step ? c.bark : c.sand,
+                transform: onboardingStep === step ? 'scale(1.3)' : 'scale(1)'
+              }} />
+            ))}
+          </div>
+
+          {/* STEP 1: Welcome */}
+          {onboardingStep === 1 && (
+            <div className="text-center">
+              <div className="w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center" style={{backgroundColor: c.terra}}>
+                <span className="text-4xl font-bold text-white">F</span>
+              </div>
+              <h1 className="text-2xl font-bold mb-2" style={{color: c.wood}}>Welcome to The Formula!</h1>
+              <p className="text-sm mb-8" style={{color: c.bark}}>
+                Let's get your experience set up so we can tailor everything to the children in your care. This takes about a minute.
+              </p>
+              <button onClick={() => setOnboardingStep(2)} className="w-full py-3 rounded-xl font-semibold text-white" style={{backgroundColor: c.terra}}>
+                Let's Go
+              </button>
+            </div>
+          )}
+
+          {/* STEP 2: Children */}
+          {onboardingStep === 2 && (
+            <div>
+              <h2 className="text-xl font-bold mb-1 text-center" style={{color: c.wood}}>Who are the little ones?</h2>
+              <p className="text-sm mb-5 text-center" style={{color: c.bark}}>
+                Tell us about the children you'll be working with.
+              </p>
+
+              <div className="space-y-4 mb-4">
+                {onboardingChildren.map((child, idx) => (
+                  <div key={idx} className="bg-white rounded-xl p-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-semibold" style={{color: c.wood}}>Child {idx + 1}</span>
+                      {onboardingChildren.length > 1 && (
+                        <button onClick={() => removeOnboardingChild(idx)}><X className="w-4 h-4" style={{color: c.terra}} /></button>
+                      )}
+                    </div>
+
+                    <input
+                      placeholder="Child's first name"
+                      value={child.name}
+                      onChange={e => updateOnboardingChild(idx, 'name', e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border mb-3 text-sm"
+                      style={{borderColor: c.sand}}
+                    />
+
+                    {/* Toggle: DOB or Age Range */}
+                    <div className="flex gap-2 mb-3">
+                      <button
+                        onClick={() => updateOnboardingChild(idx, 'inputType', 'range')}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-medium"
+                        style={{backgroundColor: child.inputType === 'range' ? c.terra : c.sand, color: child.inputType === 'range' ? 'white' : c.wood}}
+                      >Age Range</button>
+                      <button
+                        onClick={() => updateOnboardingChild(idx, 'inputType', 'birthday')}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-medium"
+                        style={{backgroundColor: child.inputType === 'birthday' ? c.terra : c.sand, color: child.inputType === 'birthday' ? 'white' : c.wood}}
+                      >Date of Birth</button>
+                    </div>
+
+                    {child.inputType === 'range' ? (
+                      <select
+                        value={child.ageRange}
+                        onChange={e => updateOnboardingChild(idx, 'ageRange', e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border text-sm"
+                        style={{borderColor: c.sand, color: child.ageRange ? c.wood : c.bark}}
+                      >
+                        <option value="">Select age range</option>
+                        <option value="0-6 months">0–6 months</option>
+                        <option value="6-12 months">6–12 months</option>
+                        <option value="1-2 years">1–2 years</option>
+                        <option value="2-3 years">2–3 years</option>
+                        <option value="3-4 years">3–4 years</option>
+                        <option value="4-5 years">4–5 years</option>
+                      </select>
+                    ) : (
+                      <input
+                        type="date"
+                        value={child.birthday}
+                        onChange={e => updateOnboardingChild(idx, 'birthday', e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border text-sm"
+                        style={{borderColor: c.sand, color: c.wood}}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <button onClick={addOnboardingChild} className="w-full py-2.5 rounded-xl mb-5 flex items-center justify-center gap-2 font-medium" style={{border: `2px dashed ${c.sand}`, color: c.bark}}>
+                <Plus className="w-4 h-4" /> Add another child
+              </button>
+
+              <div className="flex gap-3">
+                <button onClick={() => setOnboardingStep(1)} className="px-5 py-3 rounded-xl font-semibold" style={{backgroundColor: c.sand, color: c.wood}}>Back</button>
+                <button onClick={() => setOnboardingStep(3)} disabled={!hasValidChild} className="flex-1 py-3 rounded-xl font-semibold text-white disabled:opacity-40" style={{backgroundColor: c.terra}}>
+                  Continue
+                </button>
+              </div>
+
+              <button onClick={() => { setOnboardingChildren([{ name: '', birthday: '', ageRange: '', inputType: 'range' }]); setOnboardingStep(3); }} className="w-full mt-3 text-sm underline" style={{color: c.bark}}>
+                Skip for now
+              </button>
+            </div>
+          )}
+
+          {/* STEP 3: Goals */}
+          {onboardingStep === 3 && (
+            <div>
+              <h2 className="text-xl font-bold mb-1 text-center" style={{color: c.wood}}>What are you hoping for?</h2>
+              <p className="text-sm mb-5 text-center" style={{color: c.bark}}>
+                Select everything that sounds useful. This helps us tailor your experience.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                {goalOptions.map(goal => {
+                  const selected = onboardingGoals.includes(goal.id);
+                  return (
+                    <button
+                      key={goal.id}
+                      onClick={() => toggleOnboardingGoal(goal.id)}
+                      className="rounded-xl p-3 text-left transition-all"
+                      style={{
+                        backgroundColor: selected ? c.terra : 'white',
+                        border: `2px solid ${selected ? c.terra : c.sand}`,
+                        color: selected ? 'white' : c.wood
+                      }}
+                    >
+                      <span className="text-xl block mb-1">{goal.icon}</span>
+                      <span className="text-sm font-semibold block">{goal.label}</span>
+                      <span className="text-xs block mt-0.5" style={{opacity: 0.8}}>{goal.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={() => setOnboardingStep(2)} className="px-5 py-3 rounded-xl font-semibold" style={{backgroundColor: c.sand, color: c.wood}}>Back</button>
+                <button
+                  onClick={completeOnboarding}
+                  disabled={onboardingSaving}
+                  className="flex-1 py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-50"
+                  style={{backgroundColor: c.terra}}
+                >
+                  {onboardingSaving ? <><Loader className="w-5 h-5 animate-spin" />Setting up...</> : "Let's get started!"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
   // Show pricing page if no active subscription (and subscription check is complete)
   if (!hasGold() && subscriptionChecked && !subscription.loading && view !== 'pricing' && view !== 'settings') {
     return (
