@@ -1723,7 +1723,7 @@ DETAIL LEVEL — match the input:
                 <div>
                   <label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Gender</label>
                   <div className="flex gap-2">
-                    {[{value: '', label: 'Not set'}, {value: 'he', label: 'Boy'}, {value: 'she', label: 'Girl'}, {value: 'they', label: 'Other'}].map(opt => (
+                    {[{value: '', label: 'Not set'}, {value: 'he', label: 'Boy'}, {value: 'she', label: 'Girl'}].map(opt => (
                       <button key={opt.value} type="button" onClick={() => setChildForm({...childForm, gender: opt.value})} className="flex-1 py-2 rounded-lg text-xs font-medium" style={{backgroundColor: childForm.gender === opt.value ? c.terra : c.sand, color: childForm.gender === opt.value ? 'white' : c.wood}}>{opt.label}</button>
                     ))}
                   </div>
