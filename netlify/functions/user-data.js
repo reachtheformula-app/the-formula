@@ -59,8 +59,8 @@ export default async (request, context) => {
 
       if (type === 'children') {
         const rows = await sql`
-          INSERT INTO children (user_id, name, age, birthday, allergies, parent_name, parent_email, parent_phone, notes)
-          VALUES (${userId}, ${body.name}, ${body.age || ''}, ${body.birthday || ''}, ${body.allergies || ''}, ${body.parentName || ''}, ${body.parentEmail || ''}, ${body.parentPhone || ''}, ${body.notes || ''})
+          INSERT INTO children (user_id, name, age, birthday, allergies, parent_name, parent_email, parent_phone, notes, gender)
+          VALUES (${userId}, ${body.name}, ${body.age || ''}, ${body.birthday || ''}, ${body.allergies || ''}, ${body.parentName || ''}, ${body.parentEmail || ''}, ${body.parentPhone || ''}, ${body.notes || ''}, ${body.gender || ''})
           RETURNING *`;
         return new Response(JSON.stringify(rows[0]), { status: 201, headers });
       }
@@ -109,7 +109,7 @@ export default async (request, context) => {
         await sql`
           UPDATE children SET name = ${body.name}, age = ${body.age || ''}, birthday = ${body.birthday || ''},
           allergies = ${body.allergies || ''}, parent_name = ${body.parentName || ''}, parent_email = ${body.parentEmail || ''},
-          parent_phone = ${body.parentPhone || ''}, notes = ${body.notes || ''}, updated_at = NOW()
+          parent_phone = ${body.parentPhone || ''}, notes = ${body.notes || ''}, gender = ${body.gender || ''}, updated_at = NOW()
           WHERE id = ${body.id} AND user_id = ${userId}`;
       } else if (type === 'milestones') {
         await sql`
