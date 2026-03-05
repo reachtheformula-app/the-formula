@@ -37,7 +37,7 @@ const App = () => {
   const [showMilestoneForm, setShowMilestoneForm] = useState(false);
   const [editingChild, setEditingChild] = useState(null);
   const [editingLog, setEditingLog] = useState(null);
-  const [childForm, setChildForm] = useState({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '' });
+  const [childForm, setChildForm] = useState({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '', gender: '' });
   const [logForm, setLogForm] = useState({ activity: '', notes: '', childId: '', photos: [] });
   const [logViewMode, setLogViewMode] = useState('today');
   const [milestoneForm, setMilestoneForm] = useState({ title: '', childId: '', notes: '' });
@@ -356,7 +356,8 @@ const App = () => {
           setChildren(rows.map(r => ({
             id: r.id, name: r.name, age: r.age || '', birthday: r.birthday || '',
             allergies: r.allergies || '', parentName: r.parent_name || '',
-            parentEmail: r.parent_email || '', parentPhone: r.parent_phone || '', notes: r.notes || ''
+            parentEmail: r.parent_email || '', parentPhone: r.parent_phone || '', notes: r.notes || '',
+            gender: r.gender || ''
           })));
         }
       })
@@ -538,7 +539,7 @@ const App = () => {
         setChildren(prev => [...prev, { ...childForm, id: newChild.id }]);
       }
     } catch (err) { console.error('Failed to save child:', err); }
-    setChildForm({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '' });
+    setChildForm({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '', gender: '' });
     setEditingChild(null); setShowChildForm(false);
   };
 
@@ -635,7 +636,8 @@ const App = () => {
     setIsGeneratingLetter(true); setAiError(null);
     const w = selectedWeek || weeks[0];
     const tl = getTodayLogs();
-    const childNames = children.length > 0 ? children.map(ch => `${ch.name}${ch.age ? ` (${ch.age})` : ''}`).join(', ') : 'your little one';
+    const pronounMap = { he: 'he/him', she: 'she/her', they: 'they/them' };
+    const childNames = children.length > 0 ? children.map(ch => `${ch.name}${ch.age ? ` (${ch.age})` : ''}${ch.gender ? ` [${pronounMap[ch.gender]}]` : ' [use name or they/them]'}`).join(', ') : 'your little one';
     const childNamesOnly = children.length > 0 ? children.map(ch => ch.name).join(', ') : 'your little one';
     const dayDataForLetter = w.hasRichData && w.days ? w.days[selectedDay] : null;
     const todaysActivities = tl.length > 0 ? tl.map(l => `${fmtTime(l.timestamp)} - ${l.activity}${l.notes ? `: ${l.notes}` : ''}`).join('\\n') : '';
@@ -697,7 +699,10 @@ STRUCTURE:
 - 1-3 paragraphs narrating ONLY what was reported
 - Closing tease about tomorrow or a warm sign-off
 - "Learning & Development Note:" section at the end
-
+PRONOUNS:
+- Each child's pronouns are listed in brackets after their name. Use ONLY those pronouns.
+- If a child has no pronouns listed, use their name or they/them only.
+- NEVER assume gender from a child's name.
 WRITING QUALITY:
 - Vary your sentence structure — mix short and long, different openings
 - NEVER use the same descriptive phrase twice in one letter. If you mention "cause and effect" once, find a different way to describe it the next time (discovery, curiosity, figuring out how things work, etc.)
@@ -1704,7 +1709,7 @@ DETAIL LEVEL — match the input:
               <button onClick={() => navigateTo('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
               <h2 className="text-xl font-bold" style={{color: c.wood}}>Children</h2>
             </div>
-            <button onClick={() => { setEditingChild(null); setChildForm({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '' }); setShowChildForm(true); }} className="p-2 rounded-full" style={{backgroundColor: c.terra}}><Plus className="w-5 h-5 text-white" /></button>
+            <button onClick={() => { setEditingChild(null); setChildForm({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '', gender: '' }); setShowChildForm(true); }} className="p-2 rounded-full" style={{backgroundColor: c.terra}}><Plus className="w-5 h-5 text-white" /></button>
           </div>
           {showChildForm && (
             <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
@@ -1714,6 +1719,14 @@ DETAIL LEVEL — match the input:
                 <div className="grid grid-cols-2 gap-2">
                   <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Age</label><input placeholder="e.g., 2 years" value={childForm.age} onChange={e => setChildForm({...childForm, age: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
                   <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Birthday</label><input placeholder="MM/DD/YYYY" value={childForm.birthday} onChange={e => setChildForm({...childForm, birthday: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Gender</label>
+                  <div className="flex gap-2">
+                    {[{value: '', label: 'Not set'}, {value: 'he', label: 'Boy'}, {value: 'she', label: 'Girl'}, {value: 'they', label: 'Other'}].map(opt => (
+                      <button key={opt.value} type="button" onClick={() => setChildForm({...childForm, gender: opt.value})} className="flex-1 py-2 rounded-lg text-xs font-medium" style={{backgroundColor: childForm.gender === opt.value ? c.terra : c.sand, color: childForm.gender === opt.value ? 'white' : c.wood}}>{opt.label}</button>
+                    ))}
+                  </div>
                 </div>
                 <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Allergies</label><input placeholder="Any food or environmental allergies" value={childForm.allergies} onChange={e => setChildForm({...childForm, allergies: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
                 <div><label className="text-xs font-medium block mb-1" style={{color: c.bark}}>Parent/Guardian Name</label><input placeholder="Parent's full name" value={childForm.parentName} onChange={e => setChildForm({...childForm, parentName: e.target.value})} className="w-full px-3 py-2 rounded-lg border" style={{borderColor: c.sand}} /></div>
