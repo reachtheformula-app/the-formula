@@ -698,11 +698,18 @@ STRUCTURE:
 - Closing tease about tomorrow or a warm sign-off
 - "Learning & Development Note:" section at the end
 
+WRITING QUALITY:
+- Vary your sentence structure — mix short and long, different openings
+- NEVER use the same descriptive phrase twice in one letter. If you mention "cause and effect" once, find a different way to describe it the next time (discovery, curiosity, figuring out how things work, etc.)
+- Don't narrate station by station in order. Blend moments together, jump between highlights, create a real narrative flow
+- Each child should appear naturally throughout — not in a predictable "Boone did X, then Doc did Y" pattern every paragraph
+
 WHAT TO AVOID:
 - Bullet points or lists in the narrative
 - Generic phrases like "had a great time" or "everyone enjoyed"
 - Overly formal or stiff language
 - Starting every sentence with a child's name
+- Repetitive paragraph structure (don't describe each activity the same way)
 - Inventing ANY details not provided by the caregiver
 - School language: never say "classroom," "students," "teacher," "lesson" — this is home learning. Use "our morning," "our space," "caregiver," etc.
 
@@ -1657,6 +1664,12 @@ Write in The Formula voice. Only describe what was actually reported in the less
             </div>
             <textarea value={letterNotes} onChange={e => setLetterNotes(e.target.value)} placeholder='e.g., We started with circle time and talked about healthy foods. "Child" tried broccoli for the first time and made the funniest face! Then we did a sorting activity with plastic fruits...' className="w-full px-3 py-2 rounded-lg border h-28 text-sm" style={{borderColor: c.sand}} />
           </div>
+          {getTodayLogs().length === 0 && !letterNotes.trim() && (
+            <div className="rounded-xl p-3 mb-4 flex items-start gap-2" style={{backgroundColor: '#fef3c7', border: '1px solid #fcd34d'}}>
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{color: '#d97706'}} />
+              <p className="text-xs" style={{color: '#92400e'}}>No activity logs or notes yet. The letter will be based only on the lesson plan. Add a few notes above about how the day actually went for a more personal, accurate letter.</p>
+            </div>
+          )}
           <div className="flex gap-2 mb-4">
             <button onClick={generateAILetter} disabled={isGeneratingLetter} className="flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 disabled:opacity-50" style={{backgroundColor: c.terra, color: 'white'}}>
               {isGeneratingLetter ? <><Loader className="w-5 h-5 animate-spin" />Generating...</> : <><Sparkles className="w-5 h-5" />Generate Letter</>}
