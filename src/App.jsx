@@ -604,7 +604,7 @@ const App = () => {
     catch (err) { console.error('Failed to delete milestone:', err); }
   };
   const selectWeek = (w) => { setSelectedWeek(w); setSelectedDay(0); setIsEditMode(false); navigateTo('dailyPlan'); saveSettings({ selectedWeekId: String(w.id) }); };
-  
+  const navigateToLetter = () => { const todayIndex = new Date().getDay() - 1; if (todayIndex >= 0 && todayIndex <= 4) setSelectedDay(todayIndex); navigateTo('writeLetter'); };
   const saveCustomWeek = async () => {
     if (!newWeek.theme || !newWeek.season || !newWeek.focus) return;
     const dayNameFull = { 'Mon': 'Monday', 'Tue': 'Tuesday', 'Wed': 'Wednesday', 'Thu': 'Thursday', 'Fri': 'Friday', 'Sat': 'Saturday', 'Sun': 'Sunday' };
@@ -635,15 +635,25 @@ const App = () => {
     setIsGeneratingLetter(true); setAiError(null);
     const w = selectedWeek || weeks[0];
     const tl = getTodayLogs();
-    const childNames = children.length > 0 ? children.map(ch => ch.name).join(', ') : 'your little one';
+    const childNames = children.length > 0 ? children.map(ch => `${ch.name}${ch.age ? ` (${ch.age})` : ''}`).join(', ') : 'your little one';
+    const childNamesOnly = children.length > 0 ? children.map(ch => ch.name).join(', ') : 'your little one';
     const dayDataForLetter = w.hasRichData && w.days ? w.days[selectedDay] : null;
-    const todaysActivities = tl.length > 0 ? tl.map(l => `${fmtTime(l.timestamp)} - ${l.activity}${l.notes ? `: ${l.notes}` : ''}`).join('\n') : '';
-    const photosDescription = tl.filter(l => l.photos?.length > 0).length > 0 ? `\nPhotos captured: ${tl.filter(l => l.photos?.length > 0).reduce((acc, l) => acc + (l.photos?.length || 0), 0)}` : '';
+    const todaysActivities = tl.length > 0 ? tl.map(l => `${fmtTime(l.timestamp)} - ${l.activity}${l.notes ? `: ${l.notes}` : ''}`).join('\\n') : '';
+    const photosDescription = tl.filter(l => l.photos?.length > 0).length > 0 ? `\\nPhotos captured: ${tl.filter(l => l.photos?.length > 0).reduce((acc, l) => acc + (l.photos?.length || 0), 0)}` : '';
     const langLabel = getLanguageLabel();
     const languageNote = langLabel && dayDataForLetter?.frenchWord ? `${langLabel} word of the day: ${dayDataForLetter.frenchWord}.` : '';
-    const extraNotes = letterNotes.trim() ? `\n\nADDITIONAL CONTEXT FROM CAREGIVER (use this heavily — it contains the real details, moments, and flow of the day):\n${letterNotes.trim()}` : '';
-    
-    // Build lesson plan summary from selected day's curriculum data
+    const extraNotes = letterNotes.trim() ? `\\n\\nADDITIONAL CONTEXT FROM CAREGIVER (use this heavily — it contains the real details, moments, and flow of the day):\\n${letterNotes.trim()}` : '';
+    let weeklyArc = '';
+    if (w.hasRichData && w.days) {
+      const dayFocuses = w.days.map((d, i) => {
+        if (!d.focus) return null;
+        const isToday = i === selectedDay;
+        return `${dayNames[i]}: "${d.focus}"${isToday ? ' ← TODAY' : ''}`;
+      }).filter(Boolean);
+      if (dayFocuses.length > 1) {
+        weeklyArc = `\\n\\nWEEKLY ARC (reference where today fits in the bigger picture — mention what came before if it enriches the narrative):\\nTheme: "${w.theme}"\\n${dayFocuses.join('\\n')}`;
+      }
+    }
     let lessonPlanSection = '';
     if (dayDataForLetter) {
       const parts = [];
@@ -651,18 +661,16 @@ const App = () => {
       if (dayDataForLetter.qotd) parts.push(`Question of the Day: ${dayDataForLetter.qotd}`);
       if (dayDataForLetter.circleTime) parts.push(`Circle Time: ${dayDataForLetter.circleTime.substring(0, 500)}`);
       if (dayDataForLetter.songTitle) parts.push(`Song: ${dayDataForLetter.songTitle}`);
-      if (dayDataForLetter.learningStations?.length > 0) parts.push(`Learning Stations:\n${dayDataForLetter.learningStations.map((s, i) => `${i + 1}. ${s}`).join('\n')}`);
+      if (dayDataForLetter.learningStations?.length > 0) parts.push(`Learning Stations:\\n${dayDataForLetter.learningStations.map((s, i) => `${i + 1}. ${s}`).join('\\n')}`);
       if (dayDataForLetter.outsideTime) parts.push(`Outside Time: ${dayDataForLetter.outsideTime}`);
       if (dayDataForLetter.indoorMovement) parts.push(`Indoor Movement: ${dayDataForLetter.indoorMovement}`);
-      if (parts.length > 0) lessonPlanSection = `\n\nTODAY'S LESSON PLAN (reference these activities in the letter — the caregiver followed this plan):\n${parts.join('\n')}`;
+      if (parts.length > 0) lessonPlanSection = `\\n\\nTODAY'S LESSON PLAN (reference these activities in the letter — the caregiver followed this plan):\\n${parts.join('\\n')}`;
     }
-
-    // Use selected day name, not today's actual date
     const selectedDayName = dayNames[selectedDay] || 'today';
     const prompt = `You are writing a daily parent letter in The Formula's signature voice. Study these style rules carefully:
 
 VOICE & STYLE:
-- Write in first person as the caregiver alongside the children ("${childNames} and I dove into...")
+- Write in first person as the caregiver alongside the children ("${childNamesOnly} and I dove into...")
 - Name each child specifically and capture what THEY did — never generic "the children enjoyed"
 - Narrate the day as a flowing story with natural transitions
 - Use playful but smart vocabulary — never talk down
@@ -670,6 +678,11 @@ VOICE & STYLE:
 - Frame challenges positively
 - Open with energy about the group and the day's theme
 - End with a "Learning & Development Note:" section (2-4 sentences) connecting activities to real developmental skills
+
+WEEKLY CONTEXT:
+- Naturally weave in where today fits in the week's learning journey
+- You can reference what was explored earlier in the week to show progression ("Building on our exploration of X earlier this week, today we...")
+- Do NOT list every day's topic — just use the arc naturally when it enriches the story
 
 CRITICAL RULE — DO NOT FABRICATE:
 - ONLY describe activities, moments, and details that are explicitly mentioned in the logged activities or caregiver notes below.
@@ -697,10 +710,9 @@ PRIORITY: If the caregiver provided additional context below, treat it as the pr
 
 NOW WRITE THE LETTER:
 Children: ${childNames}
-Day: ${selectedDayName}
-Theme: "${w.theme}"
-${languageNote}${lessonPlanSection}
-${todaysActivities ? `\nActivity logs: ${todaysActivities}${photosDescription}` : ''}${extraNotes}
+Day: ${selectedDayName}${weeklyArc}${lessonPlanSection}
+${languageNote}
+${todaysActivities ? `\\nActivity logs: ${todaysActivities}${photosDescription}` : ''}${extraNotes}
 
 Write in The Formula voice. Only describe what was actually reported in the lesson plan, activity logs, or caregiver notes — do not invent details. If minimal info was provided, write a shorter letter (150-250 words). If detailed notes were provided, write up to 400 words.`;
     try {
@@ -1182,7 +1194,7 @@ Write in The Formula voice. Only describe what was actually reported in the less
           </div>
           <div className="grid grid-cols-2 gap-4">
             {[['weeklyThemes', c.sand, BookOpen, 'Weekly Themes'], ['dailyPlan', c.terra, Calendar, "Today's Plan"], ['activityLog', c.dune, Edit3, 'Activity Log'], ['writeLetter', c.bark, MessageSquare, 'Write Letter']].map(([v, bg, Icon, label]) => (
-              <button key={v} onClick={() => navigateTo(v)} className="bg-white rounded-2xl p-5 shadow-md hover:shadow-lg transition-all" style={{border: `2px solid ${c.sand}`}}>
+              <button key={v} onClick={() => v === 'writeLetter' ? navigateToLetter() : navigateTo(v)} className="bg-white rounded-2xl p-5 shadow-md hover:shadow-lg transition-all" style={{border: `2px solid ${c.sand}`}}>
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-3 mx-auto" style={{backgroundColor: bg}}><Icon className="w-6 h-6" style={{color: bg === c.terra || bg === c.bark ? 'white' : c.wood}} /></div>
                 <p className="font-semibold text-sm" style={{color: c.bark}}>{label}</p>
               </button>
@@ -1621,6 +1633,20 @@ Write in The Formula voice. Only describe what was actually reported in the less
             <button onClick={() => navigateTo('dashboard')} className="p-2 rounded-full" style={{backgroundColor: c.sand}}><ChevronLeft className="w-5 h-5" style={{color: c.wood}} /></button>
             <h2 className="text-xl font-bold" style={{color: c.wood}}>Daily Letter</h2>
           </div>
+          <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+            {dayNames.map((d, i) => (
+              <button key={i} onClick={() => setSelectedDay(i)} className="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap" style={{backgroundColor: selectedDay === i ? c.terra : c.sand, color: selectedDay === i ? 'white' : c.wood}}>{d}</button>
+            ))}
+          </div>
+          <div className="rounded-xl p-3 mb-4" style={{backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0'}}>
+            <p className="text-xs font-semibold mb-1" style={{color: '#065f46'}}>What the AI will reference:</p>
+            <div className="text-xs space-y-1" style={{color: '#065f46'}}>
+              {selectedWeek && <p>📚 Theme: {selectedWeek.theme} — {dayData?.focus || dayNames[selectedDay]}</p>}
+              {dayData?.learningStations && <p>🧩 {dayData.learningStations.length} learning stations from today's plan</p>}
+              <p>📝 {getTodayLogs().length} activity log{getTodayLogs().length !== 1 ? 's' : ''} from today {getTodayLogs().length > 0 ? '(auto-included)' : ''}</p>
+              {selectedWeek?.days && <p>🗓️ Full week context ({selectedWeek.days.filter(d => d.focus).length} days of curriculum)</p>}
+            </div>
+          </div>
           <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
             <label className="text-sm font-medium block mb-2" style={{color: c.wood}}>How was the day?</label>
             <div className="space-y-1 mb-3">
@@ -1947,7 +1973,7 @@ Write in The Formula voice. Only describe what was actually reported in the less
             ].map(({ tab, view: targetView, icon: Icon, label }) => {
               const isActive = getActiveTab() === tab;
               return (
-                <button key={tab} onClick={() => navigateTo(targetView)} className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg transition-all" style={{minWidth: '56px'}}>
+                <button key={tab} onClick={() => targetView === 'writeLetter' ? navigateToLetter() : navigateTo(targetView)} className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg transition-all" style={{minWidth: '56px'}}>
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-all" style={{backgroundColor: isActive ? c.terra : 'transparent'}}>
                     <Icon className="w-4 h-4" style={{color: isActive ? 'white' : c.bark}} />
                   </div>
