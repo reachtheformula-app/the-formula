@@ -721,7 +721,11 @@ Day: ${selectedDayName}${weeklyArc}${lessonPlanSection}
 ${languageNote}
 ${todaysActivities ? `\\nActivity logs: ${todaysActivities}${photosDescription}` : ''}${extraNotes}
 
-Write in The Formula voice. Only describe what was actually reported in the lesson plan, activity logs, or caregiver notes — do not invent details. If minimal info was provided, write a shorter letter (150-250 words). If detailed notes were provided, write up to 400 words.`;
+Write in The Formula voice.
+
+DETAIL LEVEL — match the input:
+- If ONLY a lesson plan is provided (no activity logs, no caregiver notes): Write a BRIEF letter (100-150 words max). Describe the day's theme and planned activities in general terms ("we explored weather through sensory play and outdoor observation"). Do NOT narrate specific child reactions, discoveries, or moments — you don't know what actually happened. Keep it warm but honest.
+- If activity logs OR caregiver notes are provided: Use those real details as the backbone. Write 200-400 words depending on how much detail was given. Only describe moments that were actually reported.`;
     try {
       const response = await fetch("/.netlify/functions/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }) });
       const data = await response.json();
