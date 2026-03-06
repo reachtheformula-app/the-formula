@@ -45,7 +45,9 @@ export default async (request, context) => {
           language: 'none',
           custom_language_name: '',
           onboarding_complete: false,
-          goals: []
+          goals: [],
+          monthly_letter_count: 0,
+          letter_count_month: null
         }), { status: 200, headers });
       } else {
         rows = await sql`SELECT * FROM activity_logs WHERE user_id = ${userId} ORDER BY timestamp DESC`;
@@ -85,14 +87,16 @@ export default async (request, context) => {
       if (type === 'settings') {
         const goalsArray = body.goals || [];
         await sql`
-          INSERT INTO user_settings (user_id, selected_week_id, language, custom_language_name, onboarding_complete, goals, updated_at)
-          VALUES (${userId}, ${body.selectedWeekId || null}, ${body.language || 'none'}, ${body.customLanguageName || ''}, ${body.onboardingComplete || false}, ${goalsArray}, NOW())
+          INSERT INTO user_settings (user_id, selected_week_id, language, custom_language_name, onboarding_complete, goals, monthly_letter_count, letter_count_month, updated_at)
+          VALUES (${userId}, ${body.selectedWeekId || null}, ${body.language || 'none'}, ${body.customLanguageName || ''}, ${body.onboardingComplete || false}, ${goalsArray}, ${body.monthlyLetterCount || 0}, ${body.letterCountMonth !== undefined ? body.letterCountMonth : null}, NOW())
           ON CONFLICT (user_id) DO UPDATE SET
             selected_week_id = COALESCE(${body.selectedWeekId}, user_settings.selected_week_id),
             language = COALESCE(${body.language}, user_settings.language),
             custom_language_name = COALESCE(${body.customLanguageName}, user_settings.custom_language_name),
             onboarding_complete = COALESCE(${body.onboardingComplete}, user_settings.onboarding_complete),
             goals = CASE WHEN ${body.goals !== undefined} THEN ${goalsArray} ELSE user_settings.goals END,
+            monthly_letter_count = COALESCE(${body.monthlyLetterCount !== undefined ? body.monthlyLetterCount : null}, user_settings.monthly_letter_count),
+            letter_count_month = COALESCE(${body.letterCountMonth !== undefined ? body.letterCountMonth : null}, user_settings.letter_count_month),
             updated_at = NOW()`;
         return new Response(JSON.stringify({ success: true }), { status: 200, headers });
       }
