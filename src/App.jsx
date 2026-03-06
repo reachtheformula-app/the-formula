@@ -52,6 +52,7 @@ const App = () => {
   const [filterSeason, setFilterSeason] = useState('All');
   const [filterFocus, setFilterFocus] = useState('All');
   const [isGeneratingLetter, setIsGeneratingLetter] = useState(false);
+  const [monthlyLetterCount, setMonthlyLetterCount] = useState(0);
   const [aiError, setAiError] = useState(null);
   const [languageSetting, setLanguageSetting] = useState('none');
   const [customLanguageName, setCustomLanguageName] = useState('');
@@ -400,6 +401,12 @@ const App = () => {
         setLanguageSetting(data.language || 'none');
         setCustomLanguageName(data.custom_language_name || '');
         setOnboardingComplete(data.onboarding_complete || false);
+        const currentMonth = new Date().getMonth();
+        if (data.letter_count_month === currentMonth) {
+          setMonthlyLetterCount(data.monthly_letter_count || 0);
+        } else {
+          setMonthlyLetterCount(0);
+        }
       })
       .catch(err => { console.error('Failed to load settings:', err); setOnboardingComplete(false); });
   };
@@ -632,7 +639,14 @@ const App = () => {
   const editWeekField = (field, value) => { const updated = { ...selectedWeek, [field]: value }; setSelectedWeek(updated); setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w)); };
   const saveEdits = async () => { setEditSaving(true); try { await fetch('/.netlify/functions/user-weeks', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selectedWeek.id, userId: currentUser.id, theme: selectedWeek.theme, season: selectedWeek.season, focus: selectedWeek.focus, teachingPhilosophy: selectedWeek.teachingPhilosophy || '', days: selectedWeek.days }) }); } catch (err) { console.error('Failed to save edits:', err); } setEditSaving(false); setIsEditMode(false); };
 
+  const MONTHLY_LETTER_LIMIT = hasPlatinum() ? 300 : 100;
+  const monthlyLettersRemaining = isAdmin ? Infinity : MONTHLY_LETTER_LIMIT - monthlyLetterCount;
+
   const generateAILetter = async () => {
+    if (!isAdmin && monthlyLetterCount >= MONTHLY_LETTER_LIMIT) {
+      alert(`You've reached your limit of ${MONTHLY_LETTER_LIMIT} AI-generated letters this month. Your limit resets at the start of next month. You can still use the Template button.`);
+      return;
+    }
     setIsGeneratingLetter(true); setAiError(null);
     const w = selectedWeek || weeks[0];
     const tl = getTodayLogs();
@@ -734,7 +748,12 @@ DETAIL LEVEL — match the input:
     try {
       const response = await fetch("/.netlify/functions/claude", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }) });
       const data = await response.json();
-      if (data.content?.[0]?.text) setLetter(data.content[0].text);
+      if (data.content?.[0]?.text) {
+        setLetter(data.content[0].text);
+        const newCount = monthlyLetterCount + 1;
+        setMonthlyLetterCount(newCount);
+        saveSettings({ monthlyLetterCount: newCount, letterCountMonth: new Date().getMonth() });
+      }
       else throw new Error(data.error?.message || 'API error');
     } catch (error) { setAiError(error.message); genTemplateLetter(); }
     finally { setIsGeneratingLetter(false); }
@@ -1673,6 +1692,11 @@ DETAIL LEVEL — match the input:
             </div>
             <textarea value={letterNotes} onChange={e => setLetterNotes(e.target.value)} placeholder='e.g., We started with circle time and talked about healthy foods. "Child" tried broccoli for the first time and made the funniest face! Then we did a sorting activity with plastic fruits...' className="w-full px-3 py-2 rounded-lg border h-28 text-sm" style={{borderColor: c.sand}} />
           </div>
+          {!isAdmin && (
+            <p className="text-xs mb-3 font-medium" style={{color: monthlyLettersRemaining <= 10 ? '#ef4444' : c.bark}}>
+              {monthlyLettersRemaining} of {MONTHLY_LETTER_LIMIT} AI letters remaining this month
+            </p>
+          )}
           {getTodayLogs().length === 0 && !letterNotes.trim() && (
             <div className="rounded-xl p-3 mb-4 flex items-start gap-2" style={{backgroundColor: '#fef3c7', border: '1px solid #fcd34d'}}>
               <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{color: '#d97706'}} />
