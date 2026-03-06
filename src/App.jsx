@@ -639,9 +639,6 @@ const App = () => {
   const editWeekField = (field, value) => { const updated = { ...selectedWeek, [field]: value }; setSelectedWeek(updated); setCustomWeeks(prev => prev.map(w => w.id === updated.id ? updated : w)); };
   const saveEdits = async () => { setEditSaving(true); try { await fetch('/.netlify/functions/user-weeks', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selectedWeek.id, userId: currentUser.id, theme: selectedWeek.theme, season: selectedWeek.season, focus: selectedWeek.focus, teachingPhilosophy: selectedWeek.teachingPhilosophy || '', days: selectedWeek.days }) }); } catch (err) { console.error('Failed to save edits:', err); } setEditSaving(false); setIsEditMode(false); };
 
-  const MONTHLY_LETTER_LIMIT = hasPlatinum() ? 300 : 100;
-  const monthlyLettersRemaining = isAdmin ? Infinity : MONTHLY_LETTER_LIMIT - monthlyLetterCount;
-
   const generateAILetter = async () => {
     if (!isAdmin && monthlyLetterCount >= MONTHLY_LETTER_LIMIT) {
       alert(`You've reached your limit of ${MONTHLY_LETTER_LIMIT} AI-generated letters this month. Your limit resets at the start of next month. You can still use the Template button.`);
@@ -771,6 +768,8 @@ DETAIL LEVEL — match the input:
 
   const MONTHLY_WEEK_LIMIT = 20;
   const isAdmin = currentUser?.id === '694851cf-da84-4f15-bbd8-597cd00f16e5';
+  const MONTHLY_LETTER_LIMIT = hasPlatinum() ? 300 : 100;
+  const monthlyLettersRemaining = isAdmin ? Infinity : MONTHLY_LETTER_LIMIT - monthlyLetterCount;
   const getMonthlyWeekCount = () => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
