@@ -26,7 +26,7 @@ export default async (request, context) => {
     return new Response(JSON.stringify({ error: 'Missing userId' }), { status: 400, headers });
   }
 
-  if (!type || !['children', 'milestones', 'logs', 'settings'].includes(type)) {
+  if (!type || !['children', 'milestones', 'logs', 'settings', 'text_contacts'].includes(type)) {
     return new Response(JSON.stringify({ error: 'Missing or invalid type' }), { status: 400, headers });
   }
 
@@ -49,6 +49,8 @@ export default async (request, context) => {
           monthly_letter_count: 0,
           letter_count_month: null
         }), { status: 200, headers });
+      } else if (type === 'text_contacts') {
+        rows = await sql`SELECT * FROM text_contacts WHERE user_id = ${userId} ORDER BY created_at ASC`;
       } else {
         rows = await sql`SELECT * FROM activity_logs WHERE user_id = ${userId} ORDER BY timestamp DESC`;
       }
@@ -83,7 +85,13 @@ export default async (request, context) => {
           RETURNING *`;
         return new Response(JSON.stringify(rows[0]), { status: 201, headers });
       }
-
+      if (type === 'text_contacts') {
+        const rows = await sql`
+          INSERT INTO text_contacts (user_id, child_id, name, phone, relationship)
+          VALUES (${userId}, ${body.childId}, ${body.name}, ${body.phone}, ${body.relationship || ''})
+          RETURNING *`;
+        return new Response(JSON.stringify(rows[0]), { status: 201, headers });
+      }
       if (type === 'settings') {
         const goalsArray = body.goals || [];
         await sql`
@@ -142,6 +150,8 @@ export default async (request, context) => {
         await sql`DELETE FROM milestones WHERE id = ${id} AND user_id = ${userId}`;
       } else if (type === 'logs') {
         await sql`DELETE FROM activity_logs WHERE id = ${id} AND user_id = ${userId}`;
+      } else if (type === 'text_contacts') {
+        await sql`DELETE FROM text_contacts WHERE id = ${id} AND user_id = ${userId}`;
       }
       return new Response(JSON.stringify({ success: true }), { status: 200, headers });
     }
