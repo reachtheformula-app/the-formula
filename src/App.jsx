@@ -414,8 +414,8 @@ const App = () => {
         }
       })
       .catch(err => { console.error('Failed to load settings:', err); setOnboardingComplete(false); });
-  };
-// Load text contacts from DB
+    
+ // Load text contacts from DB
     fetch(`/.netlify/functions/user-data?type=text_contacts&userId=${u.id}`)
       .then(res => res.json())
       .then(rows => {
@@ -426,6 +426,8 @@ const App = () => {
         }
       })
       .catch(err => console.error('Failed to load text contacts:', err));
+  };
+  
   // ========== INFANT ROUTINES ==========
   const infantRoutine0to6 = {
     label: "Daily Rhythm",
