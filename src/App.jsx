@@ -36,6 +36,10 @@ const App = () => {
   const [showLogForm, setShowLogForm] = useState(false);
   const [showMilestoneForm, setShowMilestoneForm] = useState(false);
   const [editingChild, setEditingChild] = useState(null);
+  const [textContacts, setTextContacts] = useState([]);
+  const [showContactForm, setShowContactForm] = useState(null);
+  const [contactForm, setContactForm] = useState({ name: '', phone: '', relationship: '' });
+  const [isSendingLetter, setIsSendingLetter] = useState(false);
   const [editingLog, setEditingLog] = useState(null);
   const [childForm, setChildForm] = useState({ name: '', age: '', birthday: '', allergies: '', parentName: '', parentEmail: '', parentPhone: '', notes: '', gender: '' });
   const [logForm, setLogForm] = useState({ activity: '', notes: '', childId: '', photos: [] });
@@ -268,6 +272,7 @@ const App = () => {
       setView('dashboard');
       setCheckoutMessage(null);
       setOnboardingComplete(null);
+      setTextContacts([]);
       setOnboardingStep(1);
       setOnboardingChildren([{ name: '', birthday: '', ageRange: '', inputType: 'range' }]);
       setOnboardingGoals([]);
@@ -410,7 +415,17 @@ const App = () => {
       })
       .catch(err => { console.error('Failed to load settings:', err); setOnboardingComplete(false); });
   };
-
+// Load text contacts from DB
+    fetch(`/.netlify/functions/user-data?type=text_contacts&userId=${u.id}`)
+      .then(res => res.json())
+      .then(rows => {
+        if (Array.isArray(rows)) {
+          setTextContacts(rows.map(r => ({
+            id: r.id, childId: r.child_id, name: r.name, phone: r.phone, relationship: r.relationship || ''
+          })));
+        }
+      })
+      .catch(err => console.error('Failed to load text contacts:', err));
   // ========== INFANT ROUTINES ==========
   const infantRoutine0to6 = {
     label: "Daily Rhythm",
@@ -445,6 +460,54 @@ const App = () => {
 
   // Helper functions
   const getChildName = (id) => children.find(x => x.id === parseInt(id))?.name || 'All';
+  const getContactsForChild = (childId) => textContacts.filter(c => c.childId === childId);
+  const getAllTextContacts = () => textContacts;
+  const getUniquePhoneNumbers = () => [...new Set(textContacts.map(c => c.phone))];
+
+  const saveTextContact = async (childId) => {
+    if (!contactForm.name || !contactForm.phone) return;
+    try {
+      const resp = await fetch(`/.netlify/functions/user-data?type=text_contacts&userId=${currentUser.id}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ childId, name: contactForm.name, phone: contactForm.phone, relationship: contactForm.relationship })
+      });
+      const newContact = await resp.json();
+      setTextContacts(prev => [...prev, { id: newContact.id, childId, name: contactForm.name, phone: contactForm.phone, relationship: contactForm.relationship }]);
+    } catch (err) { console.error('Failed to save text contact:', err); }
+    setContactForm({ name: '', phone: '', relationship: '' });
+    setShowContactForm(null);
+  };
+
+  const deleteTextContact = async (id) => {
+    setTextContacts(prev => prev.filter(c => c.id !== id));
+    try { await fetch(`/.netlify/functions/user-data?type=text_contacts&userId=${currentUser.id}&id=${id}`, { method: 'DELETE' }); }
+    catch (err) { console.error('Failed to delete text contact:', err); }
+  };
+
+  const sendLetterToParents = async () => {
+    if (!letter.trim()) { alert('Write or generate a letter first.'); return; }
+    const phones = getUniquePhoneNumbers();
+    if (phones.length === 0) { alert('No text contacts added yet. Add contacts in the Children section first.'); return; }
+    setIsSendingLetter(true);
+    try {
+      const w = selectedWeek || weeks[0];
+      const childNamesOnly = children.length > 0 ? children.map(ch => ch.name).join(', ') : '';
+      const resp = await fetch('/.netlify/functions/save-letter', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, content: letter, theme: w?.theme || '', dayName: dayNames[selectedDay] || '', childNames: childNamesOnly })
+      });
+      const data = await resp.json();
+      if (!data.shareUrl) throw new Error('Failed to save letter');
+      const summary = `Today with The Formula${w?.theme ? `: ${w.theme}` : ''}! Read the full letter: ${data.shareUrl}`;
+      const phoneList = phones.join(',');
+      window.location.href = `sms:${phoneList}?&body=${encodeURIComponent(summary)}`;
+    } catch (err) {
+      console.error('Send letter error:', err);
+      alert('Failed to save letter. Please try again.');
+    } finally {
+      setIsSendingLetter(false);
+    }
+  };
   const getTodayLogs = () => logs.filter(l => new Date(l.timestamp).toDateString() === new Date().toDateString());
   const getPastLogs = () => {
     const past = logs.filter(l => new Date(l.timestamp).toDateString() !== new Date().toDateString());
@@ -1681,6 +1744,14 @@ DETAIL LEVEL — match the input:
               {selectedWeek?.days && <p>🗓️ Full week context ({selectedWeek.days.filter(d => d.focus).length} days of curriculum)</p>}
             </div>
           </div>
+          {getUniquePhoneNumbers().length > 0 && (
+            <div className="rounded-xl p-3 mb-4" style={{backgroundColor: '#eff6ff', border: '1px solid #bfdbfe'}}>
+              <p className="text-xs font-semibold mb-1" style={{color: '#1e40af'}}>Send will text {getUniquePhoneNumbers().length} contact{getUniquePhoneNumbers().length !== 1 ? 's' : ''}:</p>
+              <div className="text-xs" style={{color: '#1e40af'}}>
+                {textContacts.map(c => <span key={c.id} className="inline-block mr-3">{c.name}{c.relationship ? ` (${c.relationship})` : ''}</span>)}
+              </div>
+            </div>
+          )}
           <div className="bg-white rounded-xl p-4 mb-4 shadow-md" style={{border: `1px solid ${c.sand}`}}>
             <label className="text-sm font-medium block mb-2" style={{color: c.wood}}>How was the day?</label>
             <div className="space-y-1 mb-3">
@@ -1718,7 +1789,7 @@ DETAIL LEVEL — match the input:
             <textarea value={letter} onChange={e => setLetter(e.target.value)} className="w-full h-96 p-3 rounded-lg border resize-none" style={{borderColor: c.sand, color: c.wood}} placeholder="Click 'Generate with AI' or 'Template' to create your letter..." />
             <div className="flex gap-2 mt-3">
               <button onClick={() => navigator.clipboard.writeText(letter)} className="flex-1 py-2 rounded-lg font-semibold flex items-center justify-center gap-2" style={{backgroundColor: c.dune, color: c.wood}}><Copy className="w-4 h-4" />Copy</button>
-              <button className="flex-1 py-2 rounded-lg font-semibold flex items-center justify-center gap-2" style={{backgroundColor: c.terra, color: 'white'}}><Send className="w-4 h-4" />Send</button>
+              <button onClick={sendLetterToParents} disabled={isSendingLetter} className="flex-1 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50" style={{backgroundColor: c.terra, color: 'white'}}>{isSendingLetter ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}{isSendingLetter ? 'Saving...' : 'Send'}</button>
             </div>
           </div>
         </div>
@@ -1776,6 +1847,44 @@ DETAIL LEVEL — match the input:
                     {ch.age && <p className="text-sm" style={{color: c.bark}}>Age: {ch.age}</p>}
                     {ch.allergies && <p className="text-sm text-red-600">⚠️ {ch.allergies}</p>}
                     {ch.parentName && <p className="text-xs mt-2" style={{color: c.bark}}>Parent: {ch.parentName}</p>}
+                    {/* Text Contacts */}
+                    <div className="mt-3 pt-3" style={{borderTop: `1px solid ${c.sand}`}}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold" style={{color: c.wood}}>Text Contacts</span>
+                        <button onClick={(e) => { e.stopPropagation(); setShowContactForm(showContactForm === ch.id ? null : ch.id); setContactForm({ name: '', phone: '', relationship: '' }); }} className="text-xs font-medium" style={{color: c.terra}}>+ Add</button>
+                      </div>
+                      {getContactsForChild(ch.id).length === 0 && showContactForm !== ch.id && (
+                        <p className="text-xs" style={{color: c.bark}}>No text contacts yet</p>
+                      )}
+                      {getContactsForChild(ch.id).map(contact => (
+                        <div key={contact.id} className="flex items-center justify-between py-1">
+                          <div>
+                            <span className="text-xs font-medium" style={{color: c.wood}}>{contact.name}</span>
+                            {contact.relationship && <span className="text-xs ml-1" style={{color: c.bark}}>({contact.relationship})</span>}
+                            <span className="text-xs ml-2" style={{color: c.bark}}>{contact.phone}</span>
+                          </div>
+                          <button onClick={(e) => { e.stopPropagation(); deleteTextContact(contact.id); }}><X className="w-3 h-3" style={{color: c.terra}} /></button>
+                        </div>
+                      ))}
+                      {showContactForm === ch.id && (
+                        <div className="mt-2 space-y-2">
+                          <input placeholder="Name" value={contactForm.name} onChange={e => setContactForm({...contactForm, name: e.target.value})} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{borderColor: c.sand}} />
+                          <input placeholder="Phone number" value={contactForm.phone} onChange={e => setContactForm({...contactForm, phone: e.target.value})} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{borderColor: c.sand}} />
+                          <select value={contactForm.relationship} onChange={e => setContactForm({...contactForm, relationship: e.target.value})} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{borderColor: c.sand, color: c.wood}}>
+                            <option value="">Relationship</option>
+                            <option value="Mom">Mom</option>
+                            <option value="Dad">Dad</option>
+                            <option value="Grandma">Grandma</option>
+                            <option value="Grandpa">Grandpa</option>
+                            <option value="Other">Other</option>
+                          </select>
+                          <div className="flex gap-2">
+                            <button onClick={() => saveTextContact(ch.id)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold" style={{backgroundColor: c.terra, color: 'white'}}>Save</button>
+                            <button onClick={() => setShowContactForm(null)} className="px-3 py-1.5 rounded-lg text-xs" style={{backgroundColor: c.sand, color: c.wood}}>Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => { setEditingChild(ch); setChildForm(ch); setShowChildForm(true); }}><Edit3 className="w-4 h-4" style={{color: c.bark}} /></button>
