@@ -63,6 +63,7 @@ AGE GROUPS:
 - 3-4: Stories, creative art, pretend play, letters, counting to 10, cooperative
 - 4-5: Observation, science, building, advanced vocab, inquiry, multi-step projects
 RULES: No calendar/weather/ABC in circle time. No fear-based language. No "Mama"/"Dad" — use "your grown-up." Safe activities only. Narrate actions not feelings.
+TOPIC INTERPRETATION: When the topic appears to be a children's author, illustrator, book series, or character (e.g., Dr. Seuss, Sandra Boynton, Eric Carle, Mo Willems, Pete the Cat, Elephant and Piggie), build the week around that author's actual work. Reference specific book titles, recurring characters, signature phrases, themes, and art style throughout the week's activities and circle time. Use the author's world as the spine — activities should feel like they came from inside those books. For song searches, use the author's name or their most recognizable characters as part of the songTitle.
 SONG SELECTION:
 - songTitle is used as a YouTube search term. The app automatically appends "kids song" to it.
 - songTitle should be a short phrase (2-5 words) that relates to the week's theme. Someone searching this phrase + "kids song" on YouTube should find results connected to the theme.
